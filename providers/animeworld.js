@@ -275,20 +275,17 @@ function findStreams(tmdbId, mediaType, season, episode) {
 }
 
 // ---------- Test di Nuvio ----------
-// Il pulsante Test di Nuvio chiama sempre TMDB 603 (Matrix): se 603 non c'e', si prova un titolo noto.
-var PROBE = { id: 'tt0409591', type: 'tv', season: 1, episode: 1 };
+// Il Test di Nuvio chiama sempre TMDB 603 (Matrix, assente qui): come PaCC lo si reindirizza a un titolo noto.
+var PROBE = { id: 'tt0409591', type: 'tv', season: 1, episode: 1 }; // Naruto
 
 function getStreams(tmdbId, mediaType, season, episode) {
-  return findStreams(tmdbId, mediaType, season, episode).then(function (list) {
-    if ((list && list.length) || String(tmdbId).replace(/^tmdb:/, '') !== '603') return list || [];
-    log('603 senza risultati: probe ' + PROBE.id);
-    return findStreams(PROBE.id, PROBE.type, PROBE.season, PROBE.episode).then(function (probe) {
-      return (probe || []).map(function (st) {
-        st.name += ' \uD83E\uDDEA';
-        st.title = '\uD83E\uDDEA Probe test Nuvio (603 non presente)\n' + st.title;
-        st.size = (st.size ? st.size + '\n' : '') + '\uD83E\uDDEA Probe test Nuvio';
-        return st;
-      });
+  if (String(tmdbId || '').replace(/^tmdb:/i, '').trim() !== '603') return findStreams(tmdbId, mediaType, season, episode);
+  log('test Nuvio (603) -> ' + PROBE.id);
+  return findStreams(PROBE.id, PROBE.type, PROBE.season, PROBE.episode).then(function (list) {
+    return (list || []).map(function (st) {
+      st.name += ' \uD83E\uDDEA';
+      st.title = '\uD83E\uDDEA Test Nuvio (603 -> titolo noto)\n' + st.title;
+      return st;
     });
   });
 }
