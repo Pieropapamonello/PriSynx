@@ -206,7 +206,7 @@ function playbackUrl(videoId, token) {
   });
 }
 
-function getStreams(tmdbId, mediaType, season, episode) {
+function findStreams(tmdbId, mediaType, season, episode) {
   return run(function* () {
     try {
       if (mediaType !== 'tv' && mediaType !== 'series') return [];
@@ -268,6 +268,22 @@ function getStreams(tmdbId, mediaType, season, episode) {
       log('errore: ' + (e && e.message ? e.message : e));
       return [];
     }
+  });
+}
+
+// ---------- Test di Nuvio ----------
+// Il Test di Nuvio chiama sempre TMDB 603 (Matrix, assente qui): come PaCC lo si reindirizza a un titolo noto.
+var PROBE = { id: 'tt31116760', type: 'tv', season: 9, episode: 9 }; // Il Castello delle Cerimonie
+
+function getStreams(tmdbId, mediaType, season, episode) {
+  if (String(tmdbId || '').replace(/^tmdb:/i, '').trim() !== '603') return findStreams(tmdbId, mediaType, season, episode);
+  log('test Nuvio (603) -> ' + PROBE.id);
+  return findStreams(PROBE.id, PROBE.type, PROBE.season, PROBE.episode).then(function (list) {
+    return (list || []).map(function (st) {
+      st.name += ' \uD83E\uDDEA';
+      st.title = '\uD83E\uDDEA Test Nuvio (603 -> titolo noto)\n' + st.title;
+      return st;
+    });
   });
 }
 
