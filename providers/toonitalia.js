@@ -257,7 +257,7 @@ function lookup(info, isTv, s, e) {
   });
 }
 
-function getStreams(tmdbId, mediaType, season, episode) {
+function findStreams(tmdbId, mediaType, season, episode) {
   return run(function* () {
     try {
       var isTv = mediaType === 'tv' || mediaType === 'series';
@@ -319,6 +319,24 @@ function getStreams(tmdbId, mediaType, season, episode) {
       log('errore: ' + (e && e.message ? e.message : e));
       return [];
     }
+  });
+}
+
+// ---------- Test di Nuvio ----------
+// Il Test di Nuvio chiama sempre TMDB 603 (Matrix, assente qui): come PaCC lo si reindirizza a un titolo noto.
+var PROBE_MOVIE = { id: 'tt1213012', type: 'movie', season: null, episode: null }; // Alfa & Omega (tt4055276 non e' su TMDB)
+var PROBE_TV = { id: 'tt0096697', type: 'tv', season: 1, episode: 1 }; // I Simpson
+
+function getStreams(tmdbId, mediaType, season, episode) {
+  if (String(tmdbId || '').replace(/^tmdb:/i, '').trim() !== '603') return findStreams(tmdbId, mediaType, season, episode);
+  var p = mediaType === 'movie' ? PROBE_MOVIE : PROBE_TV;
+  log('test Nuvio (603) -> ' + p.id);
+  return findStreams(p.id, p.type, p.season, p.episode).then(function (list) {
+    return (list || []).map(function (st) {
+      st.name += ' \uD83E\uDDEA';
+      st.title = '\uD83E\uDDEA Test Nuvio (603 -> titolo noto)\n' + st.title;
+      return st;
+    });
   });
 }
 
