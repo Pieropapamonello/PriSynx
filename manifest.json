@@ -152,6 +152,18 @@
       "contentLanguage": ["it"]
     },
     {
+      "id": "prisynx-animeworld",
+      "name": "AnimeWorld",
+      "description": "Anime ITA e SUB-ITA da AnimeWorld (mapping anime.stremio-italia.eu), MP4 diretti",
+      "version": "1.0.0",
+      "author": "PriSynx",
+      "supportedTypes": ["movie", "series", "tv"],
+      "filename": "providers/animeworld.js",
+      "enabled": true,
+      "formats": ["mp4"],
+      "contentLanguage": ["it"]
+    },
+    {
       "id": "animeunity",
       "name": "AnimeUnity",
       "description": "Anime in streaming ITA e SUB-ITA da AnimeUnity in HLS (VixCloud)",
