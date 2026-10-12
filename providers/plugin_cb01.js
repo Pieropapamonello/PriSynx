@@ -22,7 +22,7 @@ function _cbTmdbMeta(id, type) {
   return new Promise(function(resolve) {
     var cleanId = String(id || '').replace(/^tmdb:/, '');
     if (/^tt\d+$/.test(cleanId)) {
-      fetch('https://api.themoviedb.org/3/find/' + cleanId + '?api_key=' + TMDB_API_KEY + '&external_source=imdb_id&language=it-IT', { timeout: 10000 })
+      _safeFetch('https://api.themoviedb.org/3/find/' + cleanId + '?api_key=' + TMDB_API_KEY + '&external_source=imdb_id&language=it-IT')
         .then(function(r) { return r.ok ? r.json() : null; })
         .then(function(data) {
           if (!data) return resolve(null);
@@ -42,7 +42,7 @@ function _cbTmdbMeta(id, type) {
       var endpoint = (mediaType === 'tv' || mediaType === 'series')
         ? 'https://api.themoviedb.org/3/tv/' + cleanId + '?api_key=' + TMDB_API_KEY + '&language=it-IT'
         : 'https://api.themoviedb.org/3/movie/' + cleanId + '?api_key=' + TMDB_API_KEY + '&language=it-IT';
-      fetch(endpoint, { timeout: 10000 })
+      _safeFetch(endpoint)
         .then(function(r) { return r.ok ? r.json() : null; })
         .then(function(data) {
           if (!data) return resolve(null);
@@ -55,6 +55,14 @@ function _cbTmdbMeta(id, type) {
       resolve(null);
     }
   });
+}
+
+function _safeFetch(url, options) {
+  var opts = options ? Object.assign({}, options) : {};
+  delete opts.timeout;
+  var fetchFn = (typeof fetch !== 'undefined') ? fetch : (typeof globalThis !== 'undefined' ? globalThis.fetch : null);
+  if (!fetchFn) return Promise.reject(new Error('fetch is not defined in runtime'));
+  return fetchFn(url, opts);
 }
 
 // Empty on purpose: every run follows the cb01official.uno redirect to the current CB01 domain.
@@ -70,14 +78,22 @@ function resolveActiveDomain(cb) {
   if (isResolvingDomain) return;
   isResolvingDomain = true;
   
-  fetch('https://cb01official.uno/', { headers: { 'User-Agent': USER_AGENT }, timeout: 5000 })
+  _safeFetch('https://cb01official.uno/', { headers: { 'User-Agent': USER_AGENT } })
     .then(function (res) {
-      var finalUrl = res.url || 'https://cb01official.uno/';
-      var match = finalUrl.match(/https?:\/\/([a-zA-Z0-9.-]+)/);
+      var target = null;
+      if (res) {
+        if (res.url && res.url !== 'https://cb01official.uno/') {
+          target = res.url;
+        } else if (res.headers && typeof res.headers.get === 'function') {
+          target = res.headers.get('location');
+        }
+      }
+      var match = target ? target.match(/https?:\/\/([a-zA-Z0-9.-]+)/) : null;
       if (match && match[1] && match[1] !== 'cb01official.uno') {
         activeDomain = match[1];
       } else {
-        activeDomain = 'cb01uno.top';
+        // Fallback to active mirror if redirect header is masked by native bridge
+        activeDomain = 'cb01uno.wiki';
       }
       isResolvingDomain = false;
       var q = resolveQueue;
@@ -85,7 +101,7 @@ function resolveActiveDomain(cb) {
       q.forEach(function (c) { c(activeDomain); });
     })
     .catch(function () {
-      activeDomain = 'cb01uno.top';
+      activeDomain = 'cb01uno.wiki';
       isResolvingDomain = false;
       var q = resolveQueue;
       resolveQueue = [];
@@ -94,13 +110,36 @@ function resolveActiveDomain(cb) {
 }
 
 function getStreams(id, type, season, episode) {
-  return new Promise(function (resolve, reject) {
-    resolveActiveDomain(function (domain) {
-      var tmdbId = String(id || '').replace(/^tmdb:/, '');
-      var imdbId = (typeof __imdb_id !== 'undefined' ? __imdb_id : tmdbId);
-      var mediaType = String(type || 'movie').toLowerCase();
-      var cinemetaType = mediaType === 'tv' ? 'series' : mediaType;
+  var userCb = null;
+  if (typeof episode === 'function') {
+    userCb = episode;
+    episode = season;
+    season = type;
+    type = 'series';
+  }
 
+  var promise = new Promise(function (resolve, reject) {
+    if (id && typeof id === 'object' && !Array.isArray(id)) {
+      var obj = id;
+      id = obj.id || obj.tmdbId || obj.imdbId;
+      type = obj.type || obj.mediaType || type;
+      season = obj.season || obj.seasonNum || season;
+      episode = obj.episode || obj.episodeNum || episode;
+    }
+
+    var cleanId = String(id || '').replace(/^tmdb:/i, '').trim();
+    var idParts = cleanId.split(':');
+    var rawId = idParts[0];
+    if (idParts.length >= 3) {
+      if (!season) season = idParts[1];
+      if (!episode) episode = idParts[2];
+    }
+
+    var imdbId = (typeof __imdb_id !== 'undefined' ? __imdb_id : rawId);
+    var mediaType = String(type || 'movie').toLowerCase();
+    var cinemetaType = (mediaType === 'tv' || mediaType === 'series') ? 'series' : mediaType;
+
+    resolveActiveDomain(function (domain) {
       function doSearch(title, year) {
         searchCB01(title, year, mediaType, season, episode, function (pageUrl) {
           if (!pageUrl) return resolve([]);
@@ -111,26 +150,34 @@ function getStreams(id, type, season, episode) {
       }
 
       // Nuvio test probe (TMDB 603 = The Matrix)
-      if (tmdbId === '603') {
+      if (rawId === '603') {
         return doSearch('Matrix', '1999');
       }
 
       // CB01 lists Italian titles: TMDB (it-IT) first, Cinemeta (English, IMDb ids only) as fallback.
-      _cbTmdbMeta(imdbId, mediaType).then(function(tmdbMeta) {
+      _cbTmdbMeta(rawId, mediaType).then(function (tmdbMeta) {
         if (tmdbMeta && tmdbMeta.name) return doSearch(tmdbMeta.name, tmdbMeta.releaseInfo || '');
-        if (!/^tt\d+$/.test(imdbId)) return resolve([]);
-        getCinemetaMeta(cinemetaType, imdbId, function (err, meta) {
-          if (meta && meta.name) return doSearch(meta.name, meta.releaseInfo || '');
+        if (/^tt\d+$/.test(imdbId)) {
+          getCinemetaMeta(cinemetaType, imdbId, function (err, meta) {
+            if (meta && meta.name) return doSearch(meta.name, meta.releaseInfo || '');
+            resolve([]);
+          });
+        } else {
           resolve([]);
-        });
+        }
       }).catch(function () { resolve([]); });
     });
   });
+
+  if (userCb) {
+    promise.then(function (res) { userCb(res || []); }).catch(function () { userCb([]); });
+  }
+  return promise;
 }
 
 function getCinemetaMeta(type, imdbId, cb) {
   var url = 'https://v3-cinemeta.strem.io/meta/' + type + '/' + imdbId + '.json';
-  fetch(url, { timeout: 10000 })
+  _safeFetch(url)
     .then(function (r) { return r.ok ? r.json() : null; })
     .then(function (data) { cb(null, data && data.meta ? data.meta : null); })
     .catch(function () { cb(null, null); });
@@ -147,7 +194,7 @@ function cb01Fetch(url, cb) {
     'Accept-Language': 'it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7',
     'Referer': referer
   };
-  fetch(url, { headers: headers, timeout: 15000 })
+  _safeFetch(url, { headers: headers })
     .then(function (r) { return r.text(); })
     .then(function (html) { cb(null, html); })
     .catch(function (err) { cb(err, null); });
@@ -316,7 +363,7 @@ function mdFetch(host, path, cb) {
     "Referer": "https://" + host + "/"
   };
   var url = "https://" + host + path;
-  fetch(url, { headers: headers, timeout: 15000 })
+  _safeFetch(url, { headers: headers })
     .then(function (r) { return r.text(); })
     .then(function (html) { cb(null, html, url); })
     .catch(function (err) { cb(err, null, url); });
@@ -375,7 +422,7 @@ function isMixDropHost(url) {
 
 function unwrapStayonline(stayId, cb) {
   var formBody = 'id=' + encodeURIComponent(stayId) + '&ref=';
-  fetch('https://stayonline.pro/ajax/linkEmbedView.php', {
+  _safeFetch('https://stayonline.pro/ajax/linkEmbedView.php', {
     method: 'POST',
     headers: {
       'User-Agent': USER_AGENT,
@@ -385,8 +432,7 @@ function unwrapStayonline(stayId, cb) {
       'X-Requested-With': 'XMLHttpRequest',
       'Content-Type': 'application/x-www-form-urlencoded'
     },
-    body: formBody,
-    timeout: 15000
+    body: formBody
   })
   .then(function (r) { return r.json(); })
   .then(function (data) {
