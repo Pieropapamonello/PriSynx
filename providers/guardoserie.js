@@ -246,6 +246,8 @@ function extractUqload(playerUrl, pageUrl) {
     if (!src) src = (r.text.match(/(?:sources|file|src)\s*[:=]\s*\[?\s*\{?\s*(?:file\s*:\s*)?["']([^"']+(?:m3u8|mp4)[^"']*)/i) || [])[1];
     if (!src) return null;
     if (src.indexOf('//') === 0) src = 'https:' + src;
+    // video rimosso: Uqload risponde con un video segnaposto
+    if (/\/static\//i.test(src)) { log('uqload: video rimosso'); return null; }
     var headers = { 'User-Agent': UA, 'Referer': origin + '/', 'Origin': origin };
     var hls = /\.m3u8/i.test(src);
     var chk = hls ? yield checkMaster(src, headers) : { quality: '', variant: null };
@@ -449,7 +451,7 @@ function findEpisodeHtml(base, seriesUrl, season, episode) {
   });
 }
 
-function getStreams(tmdbId, mediaType, season, episode) {
+function findStreams(tmdbId, mediaType, season, episode) {
   return run(function* () {
     try {
       var isTv = mediaType === 'tv' || mediaType === 'series';
@@ -529,6 +531,22 @@ function getStreams(tmdbId, mediaType, season, episode) {
       log('errore: ' + (e && e.message ? e.message : e));
       return [];
     }
+  });
+}
+
+// ---------- Test di Nuvio ----------
+// Il Test di Nuvio chiama sempre TMDB 603 (Matrix, assente qui): come PaCC lo si reindirizza a un titolo noto.
+var PROBE = { id: 'tt0903747', type: 'tv', season: 1, episode: 1 }; // Breaking Bad
+
+function getStreams(tmdbId, mediaType, season, episode) {
+  if (String(tmdbId || '').replace(/^tmdb:/i, '').trim() !== '603') return findStreams(tmdbId, mediaType, season, episode);
+  log('test Nuvio (603) -> ' + PROBE.id);
+  return findStreams(PROBE.id, PROBE.type, PROBE.season, PROBE.episode).then(function (list) {
+    return (list || []).map(function (st) {
+      st.name += ' \uD83E\uDDEA';
+      st.title = '\uD83E\uDDEA Test Nuvio (603 -> titolo noto)\n' + st.title;
+      return st;
+    });
   });
 }
 
