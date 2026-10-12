@@ -115,6 +115,19 @@
       "formats": ["m3u8", "mp4"]
     },
     {
+      "id": "prisynx-toonitalia",
+      "name": "Toonitalia",
+      "description": "Cartoni e anime da Toonitalia (VOE, Uqload)",
+      "version": "1.0.0",
+      "resources": ["stream"],
+      "idPrefixes": ["tmdb:", "tt"],
+      "supportedTypes": ["movie", "series", "tv"],
+      "filename": "providers/toonitalia.js",
+      "enabled": true,
+      "contentLanguage": ["it"],
+      "formats": ["mp4", "m3u8"]
+    },
+    {
       "id": "animeunity",
       "name": "AnimeUnity",
       "description": "Anime in streaming ITA e SUB-ITA da AnimeUnity in HLS (VixCloud)",
