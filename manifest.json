@@ -164,6 +164,18 @@
       "contentLanguage": ["it"]
     },
     {
+      "id": "prisynx-animesaturn",
+      "name": "AnimeSaturn",
+      "description": "Anime ITA e SUB-ITA da AnimeSaturn (mapping anime.stremio-italia.eu), HLS/MP4 StreamPeaker",
+      "version": "1.0.0",
+      "author": "PriSynx",
+      "supportedTypes": ["movie", "series", "tv"],
+      "filename": "providers/animesaturn.js",
+      "enabled": true,
+      "formats": ["hls", "mp4"],
+      "contentLanguage": ["it"]
+    },
+    {
       "id": "animeunity",
       "name": "AnimeUnity",
       "description": "Anime in streaming ITA e SUB-ITA da AnimeUnity in HLS (VixCloud)",
