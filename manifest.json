@@ -89,6 +89,19 @@
       "formats": ["m3u8"]
     },
     {
+      "id": "prisynx-altadefinizione",
+      "name": "Altadefinizione",
+      "description": "Film e Serie TV da Altadefinizione (CDN MP4 720p, audio italiano)",
+      "version": "1.0.0",
+      "resources": ["stream"],
+      "idPrefixes": ["tmdb:", "tt"],
+      "supportedTypes": ["movie", "series", "tv"],
+      "filename": "providers/altadefinizione.js",
+      "enabled": true,
+      "contentLanguage": ["it"],
+      "formats": ["mp4"]
+    },
+    {
       "id": "prisynx-guardoserie",
       "name": "Guardoserie",
       "description": "Film e Serie TV da Guardoserie (Uqload, Loadm) in HLS",
