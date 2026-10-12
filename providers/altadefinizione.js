@@ -189,7 +189,7 @@ function findStreams(tmdbId, mediaType, season, episode) {
           '\uD83C\uDFAC Altadefinizione \u00B7 CDN ' + (n + 1) + (src.region ? ' ' + regionLabel(src.region) : '') + ' \u00B7 ' + FLAG_IT
         ].join('\n');
         streams.push({
-          name: sortPrefix(quality, n) + 'Altadefinizione ' + quality + ' ' + FLAG_IT + (n ? ' \u00B7 alt' : ''),
+          name: sortPrefix(quality, n) + '🏰 Altadefinizione ' + quality + ' ' + FLAG_IT + (n ? ' \u00B7 alt' : ''),
           title: heading + '\n' + details,
           size: details,
           url: src.url,

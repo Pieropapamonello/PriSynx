@@ -1261,7 +1261,7 @@ function resolveClickacc(startUrl, kind, jar) {
         return tryMixDropHosts(mixMatch[1], _getUrlHostname(current)).then(function (res) {
           return {
             url: res.url,
-            name: "Eurostreaming - MixDrop (Clicka)",
+            name: "🍿 Eurostreaming - MixDrop (Clicka)",
             title: "MixDrop (Clicka)",
             quality: "720p",
             behaviorHints: { notWebReady: true },
@@ -1276,7 +1276,7 @@ function resolveClickacc(startUrl, kind, jar) {
       return extractTurbovid(current, activeJar).then(function (video) {
         return {
           url: video.url,
-          name: "Eurostreaming - Turbovid (Clicka)",
+          name: "🍿 Eurostreaming - Turbovid (Clicka)",
           title: "Turbovid (Clicka)",
           quality: "720p",
           behaviorHints: { notWebReady: true },
@@ -1288,7 +1288,7 @@ function resolveClickacc(startUrl, kind, jar) {
       return extractDeltabit(current, activeJar).then(function (video) {
         return {
           url: video.url,
-          name: "Eurostreaming - DeltaBit (Clicka)",
+          name: "🍿 Eurostreaming - DeltaBit (Clicka)",
           title: "DeltaBit (Clicka)",
           quality: "720p",
           behaviorHints: { notWebReady: true },
@@ -1317,7 +1317,7 @@ function resolveClickacc(startUrl, kind, jar) {
             if (md) return tryMixDropHosts(md.id, _getUrlHostname(md.url)).then(function (res) {
               return {
                 url: res.url,
-                name: "Eurostreaming - MixDrop (Clicka)",
+                name: "🍿 Eurostreaming - MixDrop (Clicka)",
                 title: "MixDrop (Clicka)",
                 quality: "720p",
                 behaviorHints: { notWebReady: true },
@@ -1327,7 +1327,7 @@ function resolveClickacc(startUrl, kind, jar) {
           }
           // Check for m3u8
           var m3u8Url = _findM3u8(text);
-          if (m3u8Url) return { url: m3u8Url, name: 'Eurostreaming - Stream (Clicka)', title: 'Stream (Clicka)', behaviorHints: { notWebReady: true } };
+          if (m3u8Url) return { url: m3u8Url, name: '🍿 Eurostreaming - Stream (Clicka)', title: 'Stream (Clicka)', behaviorHints: { notWebReady: true } };
           // Next continue URL
           var nextUrl = _findNextUprotUrl(text, finalUrl);
           if (!nextUrl || nextUrl === current) throw new Error('Clickacc: no next URL after captcha');
@@ -1349,7 +1349,7 @@ function resolveClickacc(startUrl, kind, jar) {
         if (md2) return tryMixDropHosts(md2.id, _getUrlHostname(md2.url)).then(function (res) {
           return {
             url: res.url,
-            name: "Eurostreaming - MixDrop (Clicka)",
+            name: "🍿 Eurostreaming - MixDrop (Clicka)",
             title: "MixDrop (Clicka)",
             quality: "720p",
             behaviorHints: { notWebReady: true },
@@ -1359,7 +1359,7 @@ function resolveClickacc(startUrl, kind, jar) {
       }
       // Check for m3u8 inline
       var m3u8Url2 = _findM3u8(text);
-      if (m3u8Url2) return { url: m3u8Url2, name: 'Eurostreaming - Stream (Clicka)', title: 'Stream (Clicka)', behaviorHints: { notWebReady: true } };
+      if (m3u8Url2) return { url: m3u8Url2, name: '🍿 Eurostreaming - Stream (Clicka)', title: 'Stream (Clicka)', behaviorHints: { notWebReady: true } };
       // Next continue URL
       var nextUrl2 = _findNextUprotUrl(text, finalUrl);
       if (!nextUrl2 || nextUrl2 === current) throw new Error('Clickacc: dead end');
@@ -1410,7 +1410,7 @@ function _runNuvioTest(resolve) {
         }
         resolve([{
           url: "https://a-delivery36.mxcontent.net/v2/xw18kr1mtpke63.mp4",
-          name: sortPrefix("720p", 2) + "Eurostreaming - MixDrop [Test]",
+          name: sortPrefix("720p", 2) + "🍿 Eurostreaming - MixDrop [Test]",
           title: "MixDrop [Test]",
           quality: "720p",
           behaviorHints: { notWebReady: true },
@@ -1830,12 +1830,14 @@ function detectEpisodeLanguage(html, matchIdx, matchText) {
 // Nuvio Mobile shows name + quality + size, NuvioTV name + size: the details go in size, one per line.
 function _formatEsStream(s, showName, seasonNum, episodeNum) {
   var player = (String(s.name || '').match(/MixDrop|Turbovid|DeltaBit/i) || ['Stream'])[0];
-  var subRank = (s.lang === 'SUB ITA' || /SUB/i.test(s.lang || '')) ? 3 : 2;
-  s.name = sortPrefix(s.quality || '720p', subRank) + '\uD83C\uDF7F ES - ' + (showName || 'Eurostreaming');
+  var isSub = s.lang === 'SUB ITA' || /SUB/i.test(s.lang || '');
+  var subRank = isSub ? 3 : 2;
+  var qLabel = s.quality || '720p';
+  s.name = sortPrefix(qLabel, subRank) + '🍿 Eurostreaming ' + qLabel + ' \uD83C\uDDEE\uD83C\uDDF9 \u00B7 ' + player + (isSub ? ' SUB' : '');
   s.size = [
     '\uD83D\uDCFA Stagione ' + seasonNum + ' \u00B7 Episodio ' + episodeNum,
-    s.lang === 'SUB ITA' ? '\uD83C\uDF0D Originale + \uD83D\uDCAC Sub ITA' : '\uD83C\uDDEE\uD83C\uDDF9 Italiano',
-    '\uD83D\uDDA5\uFE0F ' + (s.quality || '720p'),
+    isSub ? '\uD83C\uDF0D Originale + \uD83D\uDCAC Sub ITA' : '\uD83C\uDDEE\uD83C\uDDF9 Italiano',
+    '\uD83D\uDDA5\uFE0F ' + qLabel,
     '\u25B6\uFE0F ' + player
   ].join('\n');
   s.title = s.name + '\n' + s.size;

@@ -401,7 +401,7 @@ function extractMixDrop(mdId, quality, cb, linkHost) {
       var streamLabel = isHD ? "MixDrop HD" : "MixDrop";
       cb({
         url: streamUrl,
-        name: sortPrefix(isHD ? '1080' : (quality || '720')) + "CB01 - " + streamLabel,
+        name: sortPrefix(isHD ? '1080' : (quality || '720')) + "📺 CB01 " + (isHD ? "1080p" : "720p") + " \uD83C\uDDEE\uD83C\uDDF9 \u00B7 " + streamLabel,
         title: streamLabel,
         quality: isHD ? '1080p' : (quality || '720p'),
         behaviorHints: { notWebReady: true },
@@ -548,8 +548,8 @@ function formatCbStream(s, title, season, episode, isSub) {
   if (season && episode) lines.push('\uD83D\uDCFA Stagione ' + Number(season) + ' \u00B7 Episodio ' + Number(episode));
   lines.push(isSub ? '\uD83C\uDF0D Originale + \uD83D\uDCAC Sub ITA' : '\uD83C\uDDEE\uD83C\uDDF9 Italiano');
   lines.push('\uD83D\uDDA5\uFE0F ' + (s.quality || '720p'));
-  lines.push('\u25B6\uFE0F MixDrop');
-  s.name = '\uD83C\uDF7F CB01 - ' + (title || 'CB01');
+  var qLabel = s.quality || '720p';
+  s.name = sortPrefix(qLabel) + '📺 CB01 ' + qLabel + ' \uD83C\uDDEE\uD83C\uDDF9 \u00B7 MixDrop' + (isSub ? ' SUB' : '');
   s.size = lines.join('\n');
   s.title = s.name + '\n' + s.size;
 }

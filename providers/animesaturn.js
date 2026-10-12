@@ -282,7 +282,7 @@ function findStreams(tmdbId, mediaType, season, episode) {
           '\uD83C\uDFAC AnimeSaturn \u00B7 ' + hostLabel(res.url) + ' \u00B7 ' + fmt + ' \u00B7 ' + FLAG_IT
         ].join('\n');
         var stream = {
-          name: sortPrefix(quality === 'HD' ? '720' : quality, res.ita ? 0 : 2) + 'AnimeSaturn ' + quality + ' ' + FLAG_IT + (res.ita ? '' : ' SUB'),
+          name: sortPrefix(quality === 'HD' ? '720' : quality, res.ita ? 0 : 2) + '🦊 AnimeSaturn ' + quality + ' ' + FLAG_IT + (res.ita ? '' : ' SUB'),
           title: heading + '\n' + details,
           size: details,
           url: res.url,

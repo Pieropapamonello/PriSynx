@@ -248,7 +248,7 @@ function findStreams(tmdbId, mediaType, season, episode) {
         '\uD83C\uDFAC Real Time \u00B7 Discovery \u00B7 HLS \u00B7 ' + FLAG_IT
       ].filter(Boolean).join('\n');
       return [{
-        name: sortPrefix(quality, 0) + 'Real Time ' + quality + ' ' + FLAG_IT,
+        name: sortPrefix(quality, 0) + '🍰 Real Time ' + quality + ' ' + FLAG_IT,
         title: heading + '\n' + details,
         size: details,
         url: url,

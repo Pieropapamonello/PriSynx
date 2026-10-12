@@ -829,7 +829,7 @@ function getStreams(tmdbId, mediaType, season, episode) {
         : "\uD83C\uDF0D Solo audio originale (ITA non trovato)") +
         "\n\uD83C\uDFAC Movy \u00B7 " + src.server + (ita && ita.subtitles.length ? " \u00B7 Sub ITA" : "");
       return {
-        name: sortPrefix(src.qkey, ita ? sync.level : "unknown") + "MovyITA " + q.label + (ita ? " \uD83C\uDDEE\uD83C\uDDF9 " + badge.short : ""),
+        name: sortPrefix(src.qkey, ita ? sync.level : "unknown") + "🎬 MovyITA " + q.label + (ita ? " \uD83C\uDDEE\uD83C\uDDF9 " + badge.short : ""),
         title: heading + "\n" + details,
         // Text under the name: NuvioTV shows `size + language` (instead of `title`), Nuvio Mobile shows
         // `quality + size + language` and ignores `title`. So the details go in `size` for both apps.

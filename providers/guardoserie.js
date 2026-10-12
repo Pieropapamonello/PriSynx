@@ -507,7 +507,7 @@ function findStreams(tmdbId, mediaType, season, episode) {
           '\uD83C\uDFAC Guardoserie \u00B7 ' + res.player + ' \u00B7 ' + (res.hls ? 'HLS' : 'MP4') + ' \u00B7 ' + FLAG_IT
         ].filter(Boolean).join('\n');
         var stream = {
-          name: sortPrefix(quality, ita ? 0 : 2) + 'Guardoserie ' + quality + ' ' + FLAG_IT + (ita ? '' : ' SUB'),
+          name: sortPrefix(quality, ita ? 0 : 2) + '🎞️ Guardoserie ' + quality + ' ' + FLAG_IT + (ita ? '' : ' SUB'),
           title: heading + '\n' + details,
           size: details,
           url: res.url,

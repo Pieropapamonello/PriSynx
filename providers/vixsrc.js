@@ -489,7 +489,7 @@ function getStreams(tmdbId, mediaType, season, episode) {
     if (!masterContent || !masterContent.trim().startsWith("#EXTM3U")) {
       console.log("[VixSrc] Fallback to direct master playlist for " + (meta.title || tmdbId));
       return [{
-        name: sortPrefix(1080, 0) + "VixSrc Auto \uD83C\uDDEE\uD83C\uDDF9",
+        name: sortPrefix(1080, 0) + "💎 VixSrc Auto \uD83C\uDDEE\uD83C\uDDF9",
         title: heading + "\n\uD83C\uDF9B\uFE0F Auto quality \u00B7 \uD83D\uDD0A Multi-audio\n\uD83C\uDFAC VixSrc \u00B7 HLS \u00B7 \uD83C\uDDEE\uD83C\uDDF9",
         size: "\uD83C\uDF9B\uFE0F Auto quality \u00B7 \uD83D\uDD0A Multi-audio",
         url: masterUrl,
@@ -602,7 +602,7 @@ function getStreams(tmdbId, mediaType, season, episode) {
       var streamUrl = v.url === masterUrl ? masterUrl : buildInlineVariantUri(v, common, masterUrl);
 
       return {
-        name: sortPrefix(v.height, 0) + "VixSrc " + v.quality + " \uD83C\uDDEE\uD83C\uDDF9",
+        name: sortPrefix(v.height, 0) + "💎 VixSrc " + v.quality + " \uD83C\uDDEE\uD83C\uDDF9",
         title: heading + "\n" + details,
         size: details,
         url: streamUrl,

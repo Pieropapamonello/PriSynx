@@ -306,7 +306,7 @@ function findStreams(tmdbId, mediaType, season, episode) {
       ].filter(Boolean).join('\n');
       var slug = norm(programName || info.title).replace(/ /g, '-');
       return [{
-        name: sortPrefix(quality, 0) + 'RaiPlay ' + quality + ' ' + FLAG_IT,
+        name: sortPrefix(quality, 0) + '🏛️ RaiPlay ' + quality + ' ' + FLAG_IT,
         title: heading + '\n' + details,
         size: details,
         url: url,

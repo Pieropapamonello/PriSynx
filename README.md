@@ -1,13 +1,27 @@
 # PriSynx Suite
 
-Suite di plugin per **Nuvio** per lo streaming in italiano e internazionale:
-* **MovyITA**: Video FHD da Movy con audio italiano e audio originale
-* **DualSync**: Video 4K/FHD (Cinejoy, Vidfast) con audio italiano muxato e offset ToastFlix / AutoSync
-* **VixSrc**: Streaming diretto HLS da VixSrc in FHD/HD con audio e sottotitoli italiani
-* **PaCC (pa.cc)**: Streaming diretto HLS con supporto multi-audio italiano e sottotitoli
-* **AnimeUnity**: Streaming diretto HLS (VixCloud) per anime sia in versione doppiata (ITA) che sottotitolata (SUB-ITA)
-* **CB01**: Film e Serie TV da CB01 (MixDrop HD/SD)
-* **Eurostreaming**: Serie TV da Eurostreaming (MixDrop, Turbovid, DeltaBit)
+Suite di plugin per **Nuvio** e **NuvioTV** per lo streaming in lingua italiana e internazionale, con supporto ad auto-delay audio, multi-qualità (fino a 4K) e sorgenti dirette.
+
+---
+
+## 📺 Provider Disponibili (14 Sorgenti)
+
+| Icona | Provider | Contenuti | Risoluzione & Formato | Audio / Sottotitoli | Note & Caratteristiche |
+| :---: | :--- | :--- | :--- | :--- | :--- |
+| ⚡ | **DualSync** | Film & Serie TV | 4K / 1080p · HLS | 🇮🇹 Audio ITA + 🌐 Originale | Video Cinejoy/Vidfast con mux audio ITA e AutoSync delay |
+| 🎬 | **MovyITA** | Film & Serie TV | 1080p · HLS | 🇮🇹 Audio ITA + 🌐 Originale | Flusso Movy con doppia traccia audio sincronizzata |
+| 🏰 | **Altadefinizione** | Film & Serie TV | 1080p / 720p · MP4 | 🇮🇹 Audio ITA | CDN MP4 diretta ad alta velocità |
+| 🎞️ | **Guardoserie** | Serie TV | 1080p / 720p · HLS / MP4 | 🇮🇹 Audio ITA + Sub-ITA | Player Uqload e Loadm |
+| 📺 | **CB01** | Film & Serie TV | 1080p / 720p · MP4 / HLS | 🇮🇹 Audio ITA + Sub-ITA | Risoluzione dinamica probe MP4 su MixDrop |
+| 🍿 | **Eurostreaming** | Serie TV | 720p / 1080p · HLS / MP4 | 🇮🇹 Audio ITA + Sub-ITA | MixDrop, Turbovid, DeltaBit con captcha bypass automatico |
+| 💎 | **VixSrc** | Film & Serie TV | 1080p / 720p · HLS | 🇮🇹 Audio ITA + Multi-audio + Sub | Streaming HLS con selezione tracce audio e sub |
+| 🌐 | **PaCC** | Film & Serie TV | 1080p / 720p · HLS | 🇮🇹 Audio ITA + Sub-ITA | Multi-server HLS con traccia audio italiana |
+| 🎨 | **Toonitalia** | Cartoni & Serie TV | 1080p / 720p · HLS / MP4 | 🇮🇹 Audio ITA + Sub-ITA | Cartoni animati, serie vintage e anime (VOE, Uqload) |
+| 🍰 | **Real Time** | Canale TV / Reality | 1080p · HLS | 🇮🇹 Audio ITA | Programmi Discovery Italia ufficiali (solo stagioni online) |
+| 🏛️ | **RaiPlay** | Fiction, Film & Doc | 1080p · HLS | 🇮🇹 Audio ITA | Catalogo RaiPlay ufficiale in alta definizione (DRM-free) |
+| 🌸 | **AnimeWorld** | Anime | 1080p / 720p · MP4 | 🇮🇹 Doppiato + 🇯🇵 SUB-ITA | Link MP4 diretti veloci con mapping automatico |
+| 🦊 | **AnimeSaturn** | Anime | 1080p / 720p · HLS / MP4 | 🇮🇹 Doppiato + 🇯🇵 SUB-ITA | StreamPeaker HLS/MP4 con mapping automatico |
+| 🏮 | **AnimeUnity** | Anime | 1080p / 720p · HLS | 🇮🇹 Doppiato + 🇯🇵 SUB-ITA | Server VixCloud con bitrate elevato (ITA e SUB) |
 
 ---
 
@@ -23,7 +37,7 @@ behaviorHints: {
 }
 ```
 * **Con la PR [#3781](https://github.com/NuvioMedia/NuvioTV/pull/3781)**: NuvioTV applica il ritardo **automaticamente all'avvio**, senza premere alcun tasto sul telecomando.
-* **Funziona solo su NuvioTV**: ExoPlayer e mpv su Android TV supportano l'impostazione nativa del delay.
+* **Supporto NuvioTV**: ExoPlayer e mpv su Android TV supportano l'impostazione del delay audio.
 
 ### 📱 Impostazione Manuale (Nuvio Mobile / Finché la PR è in review)
 1. Nella lista stream, leggi il valore nel badge (es. `⏱️ +1,25 s`).
@@ -70,9 +84,9 @@ flowchart TD
 
 ---
 
-## 📦 Installazione
+## 📦 Installazione in Nuvio
 
-Aggiungi il manifest nella sezione **Plugin** di Nuvio:
+Aggiungi il manifest nella sezione **Plugin** di Nuvio o NuvioTV:
 
 ```text
 https://raw.githubusercontent.com/qwertyuiop8899/PriSynx/main/manifest.json

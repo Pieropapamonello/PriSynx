@@ -570,7 +570,7 @@ function getStreams(rawId, mediaType, reqSeason, reqEpisode) {
           ].filter(Boolean).join("\n");
 
           allStreams.push({
-            name: sortPrefix(v.height, 0) + "AnimeUnity " + v.quality + " " + langTag,
+            name: sortPrefix(v.height, 0) + "🏮 AnimeUnity " + v.quality + " " + langTag,
             title: heading + "\n" + details,
             size: details,
             url: v.url,

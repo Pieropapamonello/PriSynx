@@ -555,7 +555,7 @@ function _rawGetStreams(rawId, type, season, episode) {
           ].filter(Boolean).join("\n");
 
           return {
-            name: sortPrefix(quality) + "PaCC " + quality + " \u00B7 Server " + candidate.server + " \uD83C\uDDEE\uD83C\uDDF9",
+            name: sortPrefix(quality) + "🌐 PaCC " + quality + " \u00B7 Server " + candidate.server + " \uD83C\uDDEE\uD83C\uDDF9",
             title: heading + "\n" + details,
             size: details,
             quality: quality,
