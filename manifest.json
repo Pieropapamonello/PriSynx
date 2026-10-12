@@ -128,6 +128,30 @@
       "formats": ["mp4", "m3u8"]
     },
     {
+      "id": "prisynx-realtime",
+      "name": "Real Time",
+      "description": "Real Time (Discovery Italia) HLS 1080p in italiano, solo stagioni online",
+      "version": "1.0.0",
+      "author": "PriSynx",
+      "supportedTypes": ["series", "tv"],
+      "filename": "providers/realtime.js",
+      "enabled": true,
+      "formats": ["m3u8"],
+      "contentLanguage": ["it"]
+     },
+     {
+      "id": "prisynx-raiplay",
+      "name": "RaiPlay",
+      "description": "RaiPlay HLS fino a 1080p in italiano, film e serie senza DRM",
+      "version": "1.0.0",
+      "author": "PriSynx",
+      "supportedTypes": ["movie", "series", "tv"],
+      "filename": "providers/raiplay.js",
+      "enabled": true,
+      "formats": ["m3u8"],
+      "contentLanguage": ["it"]
+    },
+    {
       "id": "animeunity",
       "name": "AnimeUnity",
       "description": "Anime in streaming ITA e SUB-ITA da AnimeUnity in HLS (VixCloud)",
