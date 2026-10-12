@@ -60,7 +60,12 @@ function posterFile(p) {
 function scoreCandidate(c, info) {
   var t = norm(c.title);
   var score = 0;
+  var parts = decodeEntities(c.title).split(/\s+[-\u2013\u2014:|]\s+|:\s+/).map(norm).filter(Boolean);
+  var hits = parts.filter(function (p) { return p === info.nTitle || (info.nOrig && p === info.nOrig); }).length;
   if (t && (t === info.nTitle || (info.nOrig && t === info.nOrig))) score += 5;
+  // titoli composti tipo "Game of Thrones – Il Trono di Spade"
+  else if (parts.length > 1 && hits === parts.length) score += 5;
+  else if (hits) score += 3;
   else {
     [info.nTitle, info.nOrig].forEach(function (x) {
       if (!x || !t || score >= 2) return;
