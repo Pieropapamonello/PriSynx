@@ -643,7 +643,8 @@ function classifySync(d) {
   var offset = Number(d.offset || 0);
   if (Math.abs(offset) <= SYNC_OK_SECONDS) return { level: "green", tag: "in sync" };
   var delayMs = nuvioDelayMs(offset);
-  if (Math.abs(delayMs) > NUVIO_MAX_DELAY_MS) return { level: "red", reason: "offset oltre " + (AUTO_DELAY_MAX_MS / 1000) + " s", tag: formatDelay(delayMs) };
+  // Oltre il limite di NuvioTV: resta guardabile con un player esterno impostando il ritardo a mano.
+  if (Math.abs(delayMs) > NUVIO_MAX_DELAY_MS) return { level: "red", tooBig: true, delayMs: delayMs, reason: "offset oltre " + (NUVIO_MAX_DELAY_MS / 1000) + " s", tag: formatDelay(delayMs) };
   return { level: "yellow", delayMs: delayMs, tag: formatDelay(delayMs) };
 }
 
@@ -826,6 +827,13 @@ function syncBadge(sync) {
     return { short: short, line: icon + " Misurazione offset avviata in background (~10s). Riapri a breve." };
   }
   if (sync.level === "yellow") return { short: short, line: icon + " Offset non misurato, da provare (" + sync.reason + ")" };
+  if (sync.tooBig) {
+    return {
+      short: "\u26A0\uFE0F " + sync.tag + " \u00B7 player esterno",
+      line: "\u26A0\uFE0F Offset " + formatDelay(sync.delayMs) + " oltre il limite di NuvioTV (\u00B1" + (NUVIO_MAX_DELAY_MS / 1000) +
+        " s): usa un player esterno (es. VLC, Just Player) e imposta a mano il ritardo audio, oppure scegli l\u0027audio originale"
+    };
+  }
   if (sync.level === "red") return { short: short, line: icon + " Audio non in sync, non riproducibile (" + sync.reason + ")" };
   return { short: short, line: icon + " Sync audio non verificato (" + sync.reason + ")" };
 }
@@ -999,7 +1007,8 @@ function getStreams(tmdbId, mediaType, season, episode) {
           headers: enc.headers,
           audioSync: ita ? sync.info : undefined,
           // NuvioTV adds it to the device audio delay (>0 = audio later); other apps ignore it.
-          behaviorHints: ita && autoDelayMs(sync.info) !== undefined ? { audioDelayMs: autoDelayMs(sync.info) } : undefined,
+          // audioDelayLanguage: the delay only applies to the ITA tracks (audio + subtitles from vixsrc), not to the original audio.
+          behaviorHints: ita && autoDelayMs(sync.info) !== undefined ? { audioDelayMs: autoDelayMs(sync.info), audioDelayLanguage: "it" } : undefined,
           // 4K before FHD, then best verdict, then a measured offset before an estimate.
           _rank: -Number(qkey) * 1000 + (ita ? LEVEL_RANK[sync.level] * 10 + (sync.measured ? 0 : 5) : 0)
         });
