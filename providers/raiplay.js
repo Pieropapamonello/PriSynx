@@ -228,29 +228,67 @@ function seasonSets(program, season, seasonInfo) {
   var ordered = epBlocks
     .concat(blocks.filter(function (b) { return !/episodi|puntate|clip|extra|highlights|anticipazioni|backstage|speciali?/i.test(b.name || ''); }));
   var all = [];
-  ordered.forEach(function (b) { (b.sets || []).forEach(function (st) { if (st && st.path_id && all.indexOf(st) === -1) all.push(st); }); });
+  ordered.forEach(function (b) {
+    (b.sets || []).forEach(function (st) {
+      if (!st || !st.path_id) return;
+      var exists = all.some(function (entry) { return entry.set.path_id === st.path_id; });
+      if (!exists) {
+        all.push({
+          block: b,
+          set: st,
+          fullName: ((b.name || '') + ' ' + (st.name || '')).trim()
+        });
+      }
+    });
+  });
 
   var out = [];
-  function add(st, byNumber) { if (!out.some(function (o) { return o.set === st; })) out.push({ set: st, byNumber: byNumber }); }
-  all.forEach(function (st) { if (re.test(st.name || '')) add(st, true); });
-  // miniserie: un solo blocco episodi con un solo set senza numero di stagione
-  if (!out.length && season === 1 && epBlocks.length === 1 && (epBlocks[0].sets || []).length === 1) add(epBlocks[0].sets[0], true);
+  function add(entry, byNumber) {
+    if (!out.some(function (o) { return o.set.path_id === entry.set.path_id; })) {
+      out.push({ set: entry.set, byNumber: byNumber });
+    }
+  }
 
+  // 1. Match per "Stagione N" su blocco+set
+  all.forEach(function (e) {
+    if (re.test(e.fullName)) add(e, true);
+  });
+
+  // 2. Match per anno TMDB
   var air = seasonInfo && seasonInfo.airDate;
   if (air) {
     var y = parseInt(air.slice(0, 4), 10), mo = parseInt(air.slice(5, 7), 10) || 1;
     var start = mo >= 7 ? y : y - 1; // stagione TV: da settembre a giugno
     var exact = [], near = [];
-    all.forEach(function (st) {
-      var yr = setYears(st.name);
+    all.forEach(function (e) {
+      var yr = setYears(e.fullName);
       if (!yr) return;
-      if (yr.from === start || (yr.from === yr.to && yr.from === y)) exact.push(st);
-      else if (y >= yr.from && y <= yr.to) near.push(st);
+      if (yr.from === y || yr.to === y || (y >= yr.from && y <= yr.to)) exact.push(e);
+      else if (yr.from === start) near.push(e);
     });
-    exact.concat(near).forEach(function (st) { add(st, false); });
+    function sortEpSets(a, b) {
+      var aEp = /puntat|episod/i.test(a.set.name || '') ? 1 : 0;
+      var bEp = /puntat|episod/i.test(b.set.name || '') ? 1 : 0;
+      return bEp - aEp;
+    }
+    exact.sort(sortEpSets).forEach(function (e) { add(e, false); });
+    near.sort(sortEpSets).forEach(function (e) { add(e, false); });
   }
-  // ultimo tentativo per titolo episodio (es. Montalbano sta in un blocco "TvMovie")
-  if (seasonInfo) all.forEach(function (st) { add(st, false); });
+
+  // 3. Miniserie: un solo blocco episodi con un solo set senza numero di stagione
+  if (!out.length && season === 1 && epBlocks.length === 1 && (epBlocks[0].sets || []).length === 1) {
+    var single = all[0];
+    if (single) add(single, true);
+  }
+
+  // 4. Fallback per tutti gli altri con precedenza ai set puntate/episodi
+  if (seasonInfo) {
+    all.slice().sort(function (a, b) {
+      var aEp = /puntat|episod/i.test(a.fullName) ? 1 : 0;
+      var bEp = /puntat|episod/i.test(b.fullName) ? 1 : 0;
+      return bEp - aEp;
+    }).forEach(function (e) { add(e, false); });
+  }
   return out.slice(0, 6);
 }
 
