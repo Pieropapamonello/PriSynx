@@ -1,11 +1,23 @@
-// Real Time (Discovery Italia) - provider per NuvioTV / Nuvio Mobile (nessun server esterno).
+// Real Time / NOVE / DMAX / Food Network (Discovery Italia) - provider per NuvioTV / Nuvio Mobile (nessun server esterno).
 // Token anonimo dalla pagina del programma + videoPlaybackInfo dall'IP del dispositivo:
 // l'URL HLS e' firmato con l'IP di chi lo chiede e scade dopo pochi minuti.
 
 var API = 'https://public.aurora.enhanced.live';
 var TMDB_KEY_FALLBACK = '68e094699525b18a70bab2f86b1fa706';
 var UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
-var RT_HEADERS = { 'User-Agent': UA, 'Referer': 'https://realtime.it/', 'Origin': 'https://realtime.it', 'Accept': 'application/json, text/plain, */*' };
+// stessa API per tutti i canali Discovery free: cambiano ambiente di ricerca, parent_slug e sito
+var CHANNELS = [
+  { env: 'realtime', parent: 'programmi-real-time', site: 'https://realtime.it', name: 'Real Time' },
+  { env: 'nove', parent: 'programmi-nove', site: 'https://nove.tv', name: 'NOVE' },
+  { env: 'dmaxit', parent: 'programmi-dmax', site: 'https://dmax.it', name: 'DMAX' },
+  { env: 'foodnetwork', parent: 'programmi-food-network', site: 'https://foodnetwork.it', name: 'Food Network' }
+];
+
+function siteHeaders(ch, extra) {
+  var h = { 'User-Agent': UA, 'Referer': ch.site + '/', 'Origin': ch.site };
+  for (var k in extra || {}) h[k] = extra[k];
+  return h;
+}
 
 function run(genFn) {
   return new Promise(function (resolve, reject) {
@@ -138,20 +150,30 @@ function titleScore(candidate, info) {
   return best;
 }
 
+function searchChannel(ch, query) {
+  return req(API + '/site/search/page/?include=default&filter[environment]=' + ch.env + '&v=2&q=' +
+    encodeURIComponent(query) + '&page[number]=1&page[size]=20',
+    { headers: siteHeaders(ch, { 'Accept': 'application/json, text/plain, */*' }) }).then(function (r) {
+    var d = r.ok ? parseJson(r.text) : null;
+    return (d && d.data) || [];
+  });
+}
+
+// cerca su tutti i canali in parallelo e tiene il programma piu' simile (a parita', l'ordine di CHANNELS)
 function findShow(info) {
   return run(function* () {
     var queries = [info.title, info.orig].map(norm).filter(function (q, i, a) { return q && a.indexOf(q) === i; });
     for (var qi = 0; qi < queries.length; qi++) {
-      var r = yield req(API + '/site/search/page/?include=default&filter[environment]=realtime&v=2&q=' +
-        encodeURIComponent(queries[qi]) + '&page[number]=1&page[size]=20', { headers: RT_HEADERS });
-      var d = r.ok ? parseJson(r.text) : null;
+      var results = yield Promise.all(CHANNELS.map(function (ch) { return searchChannel(ch, queries[qi]); }));
       var best = null, bestScore = 0;
-      ((d && d.data) || []).forEach(function (it) {
-        if (!it || !it.slug || it.type !== 'showpage') return;
-        var s = titleScore(it.title, info);
-        if (s > bestScore) { best = it; bestScore = s; }
+      results.forEach(function (list, ci) {
+        list.forEach(function (it) {
+          if (!it || !it.slug || it.type !== 'showpage') return;
+          var s = titleScore(it.title, info);
+          if (s > bestScore) { best = { slug: it.slug, title: it.title, channel: CHANNELS[ci] }; bestScore = s; }
+        });
       });
-      if (best) { log('programma "' + best.title + '" (' + best.slug + ')'); return best.slug; }
+      if (best) { log('programma "' + best.title + '" su ' + best.channel.name + ' (' + best.slug + ')'); return best; }
     }
     return null;
   });
@@ -177,17 +199,17 @@ function findEpisode(page, season, episode) {
   return null;
 }
 
-function playbackUrl(videoId, token) {
+function playbackUrl(ch, videoId, token) {
   return run(function* () {
     var r = yield req(API + '/playback/v3/videoPlaybackInfo', {
       method: 'POST',
-      headers: {
-        'User-Agent': UA, 'Referer': 'https://realtime.it/', 'Origin': 'https://realtime.it', 'Accept': '*/*',
+      headers: siteHeaders(ch, {
+        'Accept': '*/*',
         'Content-Type': 'application/json',
         'X-disco-client': 'WEB:UNKNOWN:wbdatv:2.1.9',
         'X-disco-params': 'realm=it',
         'Authorization': 'Bearer ' + token
-      },
+      }),
       body: JSON.stringify({
         deviceInfo: { adBlocker: false, drmSupported: false, hdrCapabilities: ['SDR'], hwDecodingCapabilities: [], soundCapabilities: ['STEREO'] },
         wisteriaProperties: {},
@@ -215,10 +237,11 @@ function findStreams(tmdbId, mediaType, season, episode) {
       var info = yield getInfo(tmdbId);
       if (!info || !info.title) { log('TMDB senza titolo per ' + tmdbId); return []; }
 
-      var slug = yield findShow(info);
-      if (!slug) { log('nessun programma per ' + info.title); return []; }
-      var pr = yield req(API + '/site/page/' + encodeURIComponent(slug) +
-        '/?include=default&filter[environment]=realtime&v=2&parent_slug=programmi-real-time', { headers: RT_HEADERS });
+      var show = yield findShow(info);
+      if (!show) { log('nessun programma per ' + info.title); return []; }
+      var ch = show.channel, slug = show.slug;
+      var pr = yield req(API + '/site/page/' + encodeURIComponent(slug) + '/?include=default&filter[environment]=' + ch.env +
+        '&v=2&parent_slug=' + ch.parent, { headers: siteHeaders(ch, { 'Accept': 'application/json, text/plain, */*' }) });
       var page = pr.ok ? parseJson(pr.text) : null;
       if (!page) { log('pagina HTTP ' + pr.status); return []; }
       var realm = (page.userMeta && page.userMeta.realm) || {};
@@ -227,10 +250,10 @@ function findStreams(tmdbId, mediaType, season, episode) {
 
       var item = findEpisode(page, s, ep);
       if (!item) { log('episodio S' + s + 'E' + ep + ' non disponibile'); return []; }
-      var url = yield playbackUrl(item.id, token);
+      var url = yield playbackUrl(ch, item.id, token);
       if (!url) return [];
 
-      var headers = { 'User-Agent': UA, 'Referer': 'https://realtime.it/', 'Origin': 'https://realtime.it' };
+      var headers = siteHeaders(ch);
       var mr = yield req(url, { headers: headers });
       if (!mr.ok || mr.text.indexOf('#EXTM3U') === -1) { log('master HTTP ' + mr.status); return []; }
       var v = bestVariant(mr.text);
@@ -245,10 +268,10 @@ function findStreams(tmdbId, mediaType, season, episode) {
       var details = [
         technical,
         '\uD83D\uDD0A ' + FLAG_IT + ' Italiano',
-        '\uD83C\uDFAC Real Time \u00B7 Discovery \u00B7 HLS \u00B7 ' + FLAG_IT
+        '\uD83C\uDFAC ' + ch.name + ' \u00B7 Discovery \u00B7 HLS \u00B7 ' + FLAG_IT
       ].filter(Boolean).join('\n');
       return [{
-        name: sortPrefix(quality, 0) + '🍰 Real Time ' + quality + ' ' + FLAG_IT,
+        name: sortPrefix(quality, 0) + '🍰 ' + ch.name + ' ' + quality + ' ' + FLAG_IT,
         title: heading + '\n' + details,
         size: details,
         url: url,
@@ -261,7 +284,7 @@ function findStreams(tmdbId, mediaType, season, episode) {
           headers: headers,
           proxyHeaders: { request: headers },
           bingeGroup: 'realtime-discovery',
-          filename: 'realtime-' + slug + '-S' + pad2(s) + 'E' + pad2(ep) + '.m3u8'
+          filename: ch.env + '-' + slug + '-S' + pad2(s) + 'E' + pad2(ep) + '.m3u8'
         }
       }];
     } catch (e) {
@@ -273,7 +296,7 @@ function findStreams(tmdbId, mediaType, season, episode) {
 
 // ---------- Test di Nuvio ----------
 // Il Test di Nuvio chiama sempre TMDB 603 (Matrix, assente qui): come PaCC lo si reindirizza a un titolo noto.
-var PROBE = { id: 'tt31116760', type: 'tv', season: 9, episode: 9 }; // Il Castello delle Cerimonie
+var PROBE = { id: '70624', type: 'tv', season: 10, episode: 13 }; // Fratelli di Crozza (NOVE)
 
 function getStreams(tmdbId, mediaType, season, episode) {
   if (String(tmdbId || '').replace(/^tmdb:/i, '').trim() !== '603') return findStreams(tmdbId, mediaType, season, episode);

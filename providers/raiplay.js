@@ -134,6 +134,7 @@ function getInfo(id, isMovie) {
     var j = r.ok ? parseJson(r.text) : null;
     if (!j) return null;
     return {
+      tmdbId: tmdbId,
       title: j.title || j.name || '',
       orig: j.original_title || j.original_name || '',
       year: parseInt(String(j.release_date || j.first_air_date || '').slice(0, 4), 10) || 0
@@ -196,19 +197,61 @@ function findPrograms(info, isMovie) {
   });
 }
 
-function seasonSet(program, season) {
+// stagione TMDB (numero, data e titoli degli episodi): serve quando RaiPlay non usa la numerazione TMDB
+function getSeasonInfo(tmdbId, season) {
+  return run(function* () {
+    var id = String(tmdbId).replace(/^tmdb:/, '');
+    var r = yield req('https://api.themoviedb.org/3/tv/' + id + '/season/' + season + '?api_key=' + tmdbKey() + '&language=it-IT');
+    var j = r.ok ? parseJson(r.text) : null;
+    if (!j) return null;
+    return {
+      airDate: j.air_date || '',
+      episodes: (j.episodes || []).map(function (e) { return { n: e.episode_number, name: e.name || '', date: e.air_date || '' }; })
+    };
+  });
+}
+
+// anni nel nome del set: "Stagione 2014-2015", "St 2014/15", "Stagione 2005"
+function setYears(name) {
+  var m = String(name || '').match(/\b((?:19|20)\d{2})(?:\s*[-\/]\s*(\d{2}|\d{4}))?\b/);
+  if (!m) return null;
+  var a = parseInt(m[1], 10);
+  var b = m[2] ? parseInt(m[2].length === 2 ? m[1].slice(0, 2) + m[2] : m[2], 10) : a;
+  return { from: a, to: b };
+}
+
+// set candidati in ordine: "Stagione N", poi i set per anno della stagione TMDB, poi gli altri set di puntate
+function seasonSets(program, season, seasonInfo) {
   var blocks = program.blocks || [];
   var re = new RegExp('(?:^|\\b)(?:stagione|st\\.?)\\s*' + season + '\\b', 'i');
-  var ordered = blocks.filter(function (b) { return /episodi|puntate/i.test(b.name || ''); })
+  var epBlocks = blocks.filter(function (b) { return /episodi|puntate/i.test(b.name || ''); });
+  var ordered = epBlocks
     .concat(blocks.filter(function (b) { return !/episodi|puntate|clip|extra|highlights|anticipazioni|backstage|speciali?/i.test(b.name || ''); }));
-  for (var i = 0; i < ordered.length; i++) {
-    var sets = ordered[i].sets || [];
-    for (var k = 0; k < sets.length; k++) if (re.test(sets[k].name || '')) return sets[k];
-  }
+  var all = [];
+  ordered.forEach(function (b) { (b.sets || []).forEach(function (st) { if (st && st.path_id && all.indexOf(st) === -1) all.push(st); }); });
+
+  var out = [];
+  function add(st, byNumber) { if (!out.some(function (o) { return o.set === st; })) out.push({ set: st, byNumber: byNumber }); }
+  all.forEach(function (st) { if (re.test(st.name || '')) add(st, true); });
   // miniserie: un solo blocco episodi con un solo set senza numero di stagione
-  var ep = blocks.filter(function (b) { return /episodi|puntate/i.test(b.name || ''); });
-  if (season === 1 && ep.length === 1 && (ep[0].sets || []).length === 1) return ep[0].sets[0];
-  return null;
+  if (!out.length && season === 1 && epBlocks.length === 1 && (epBlocks[0].sets || []).length === 1) add(epBlocks[0].sets[0], true);
+
+  var air = seasonInfo && seasonInfo.airDate;
+  if (air) {
+    var y = parseInt(air.slice(0, 4), 10), mo = parseInt(air.slice(5, 7), 10) || 1;
+    var start = mo >= 7 ? y : y - 1; // stagione TV: da settembre a giugno
+    var exact = [], near = [];
+    all.forEach(function (st) {
+      var yr = setYears(st.name);
+      if (!yr) return;
+      if (yr.from === start || (yr.from === yr.to && yr.from === y)) exact.push(st);
+      else if (y >= yr.from && y <= yr.to) near.push(st);
+    });
+    exact.concat(near).forEach(function (st) { add(st, false); });
+  }
+  // ultimo tentativo per titolo episodio (es. Montalbano sta in un blocco "TvMovie")
+  if (seasonInfo) all.forEach(function (st) { add(st, false); });
+  return out.slice(0, 6);
 }
 
 function itemNumbers(it) {
@@ -219,7 +262,18 @@ function itemNumbers(it) {
   return null;
 }
 
-function findEpisodePath(set, season, episode) {
+function isGenericEpisodeName(name) {
+  return !name || /^(?:episodio|puntata|episode|ep\.?)\s*\d+$/i.test(String(name).trim());
+}
+
+function itemDate(it) {
+  var m = String(it.name || '').match(/\b(\d{2})\/(\d{2})\/(\d{4})\b/);
+  return m ? m[3] + '-' + m[2] + '-' + m[1] : '';
+}
+
+// numerazione RaiPlay -> titolo dell'episodio TMDB -> data di messa in onda (solo se univoca)
+// l'ordine dei video (fallback) vale solo per i set "Stagione N": i set per anno sono spesso al contrario
+function findEpisodePath(set, season, episode, seasonInfo, byNumber) {
   return run(function* () {
     var d = yield getJson(set.path_id);
     var items = (d && d.items) || [];
@@ -230,7 +284,20 @@ function findEpisodePath(set, season, episode) {
       numbered = true;
       if (n.e === episode && (!n.s || n.s === season)) return items[i].path_id;
     }
-    if (!numbered && episode <= items.length) return items[episode - 1].path_id;
+    var tmdbEp = seasonInfo && seasonInfo.episodes.filter(function (e) { return e.n === episode; })[0];
+    if (tmdbEp && !isGenericEpisodeName(tmdbEp.name)) {
+      var want = norm(tmdbEp.name);
+      for (var k = 0; k < items.length; k++) {
+        if (norm(items[k].episode_title) === want || norm(String(items[k].name || '').split(' - ')[0]) === want) {
+          return items[k].path_id;
+        }
+      }
+    }
+    if (tmdbEp && tmdbEp.date && seasonInfo.episodes.filter(function (e) { return e.date === tmdbEp.date; }).length === 1) {
+      var sameDay = items.filter(function (it) { return itemDate(it) === tmdbEp.date; });
+      if (sameDay.length === 1) return sameDay[0].path_id;
+    }
+    if (byNumber && !numbered && episode <= items.length) return items[episode - 1].path_id;
     return null;
   });
 }
@@ -256,7 +323,7 @@ function findStreams(tmdbId, mediaType, season, episode) {
       if (!info || !info.title) { log('TMDB senza titolo per ' + tmdbId); return []; }
 
       var paths = yield findPrograms(info, isMovie);
-      var videoPath = null, programName = '';
+      var videoPath = null, programName = '', seasonInfo;
       for (var pi = 0; pi < paths.length && !videoPath; pi++) {
         var program = yield getJson(paths[pi]);
         if (!program || !program.name || titleScore(program.name, info) < 2) continue;
@@ -270,8 +337,11 @@ function findStreams(tmdbId, mediaType, season, episode) {
           videoPath = program.first_item_path || null;
         } else {
           if (/^film$/i.test(typ)) continue;
-          var set = seasonSet(program, s);
-          if (set) videoPath = yield findEpisodePath(set, s, ep);
+          if (seasonInfo === undefined) seasonInfo = yield getSeasonInfo(info.tmdbId, s);
+          var sets = seasonSets(program, s, seasonInfo);
+          for (var si = 0; si < sets.length && !videoPath; si++) {
+            videoPath = yield findEpisodePath(sets[si].set, s, ep, seasonInfo, sets[si].byNumber);
+          }
         }
         if (videoPath) { programName = program.name; log('programma "' + program.name + '" (' + paths[pi] + ')'); }
       }
