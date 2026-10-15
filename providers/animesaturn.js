@@ -2,7 +2,10 @@
 // Mapping TMDB/IMDb/Kitsu -> pagine AnimeSaturn da anime.stremio-italia.eu, poi
 // /anime/{slug}/ep-N -> iframe SaturnCDN -> /embed/{id}/playlist (base64 XOR token) -> HLS/MP4 (StreamPeaker).
 
-var MAP_API = 'https://anime.stremio-italia.eu';
+var MAPPING_BASES = [
+  (typeof ANIME_MAPPING_API !== 'undefined' && ANIME_MAPPING_API) ? ANIME_MAPPING_API : 'https://animemapping.realbestia.com',
+  'https://anime.stremio-italia.eu'
+];
 var AS_BASE = 'https://www.animesaturn.net';
 var TMDB_KEY_FALLBACK = '68e094699525b18a70bab2f86b1fa706';
 var UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36';
@@ -153,12 +156,19 @@ function parseId(raw, episode) {
 
 function fetchMapping(provider, id, season, episode) {
   var q = '?ep=' + episode + (season ? '&s=' + season : '') + '&lang=it';
-  return req(MAP_API + '/' + provider + '/' + encodeURIComponent(id) + q, { headers: { 'User-Agent': UA, 'Accept': 'application/json' } })
-    .then(function (r) {
-      var j = parseJson(r.text);
-      if (!j || !j.ok) { log('mapping ' + provider + ':' + id + ' HTTP ' + r.status + (j && j.error ? ' ' + j.error : '')); return null; }
-      return j;
-    });
+  function tryBase(idx) {
+    if (idx >= MAPPING_BASES.length) return Promise.resolve(null);
+    var base = MAPPING_BASES[idx];
+    return req(base + '/' + provider + '/' + encodeURIComponent(id) + q, { headers: { 'User-Agent': UA, 'Accept': 'application/json' } })
+      .then(function (r) {
+        var j = parseJson(r.text);
+        if (j && j.ok && j.mappings && j.mappings.animesaturn) return j;
+        return tryBase(idx + 1);
+      }).catch(function () {
+        return tryBase(idx + 1);
+      });
+  }
+  return tryBase(0);
 }
 
 function asPaths(map) {
@@ -210,12 +220,16 @@ function resolvePath(path, ep) {
     var out = { url: media, headers: headers, hls: hls, size: 0, variant: null, ita: isItaPath(path) };
     if (hls) {
       var mr = yield req(media, { headers: headers });
-      if (!mr.ok || mr.text.indexOf('#EXTM3U') === -1) { log('HLS non raggiungibile HTTP ' + mr.status); return null; }
-      out.variant = bestVariant(mr.text);
+      if (mr.ok && mr.text.indexOf('#EXTM3U') !== -1) {
+        out.variant = bestVariant(mr.text);
+      }
     } else {
       var pr = yield req(media, { headers: { 'User-Agent': UA, 'Referer': embed, 'Origin': origin, 'Range': 'bytes=0-0' } });
-      if (pr.status !== 206 && pr.status !== 200) { log('MP4 non raggiungibile HTTP ' + pr.status); return null; }
-      out.size = parseInt((pr.header('content-range').match(/\/(\d+)/) || [])[1], 10) || 0;
+      if (pr.status === 206 || pr.status === 200) {
+        out.size = parseInt((pr.header('content-range').match(/\/(\d+)/) || [])[1], 10) || 0;
+      } else {
+        out.size = 0;
+      }
     }
     out.pageTitle = decodeEntities((page.text.match(/<title>([^<]*)/i) || [])[1] || '')
       .replace(/^\s*AnimeSaturn\s*-\s*/i, '').replace(/\s+Episodio\b.*$/i, '').replace(/\s*\(ITA\)\s*$/i, '').trim();
@@ -249,6 +263,16 @@ function findStreams(tmdbId, mediaType, season, episode) {
         map = yield fetchMapping(id.provider, id.id, 0, id.episode || ep);
       }
       var paths = asPaths(map);
+      if (!paths.length && map) {
+        var kitsuId = (map.requested && map.requested.resolvedKitsuId) || (map.kitsu && map.kitsu.id);
+        if (kitsuId && (id.provider !== 'kitsu' || id.id !== String(kitsuId))) {
+          var kMap = yield fetchMapping('kitsu', String(kitsuId), 0, id.episode || ep);
+          if (kMap && asPaths(kMap).length) {
+            map = kMap;
+            paths = asPaths(map);
+          }
+        }
+      }
       if (!paths.length) { log('nessuna pagina AnimeSaturn per ' + tmdbId); return []; }
       var absEp = isMovie ? 1 : (map.kitsu && parseInt(map.kitsu.episode, 10)) || id.episode || ep;
       log((map.kitsu && map.kitsu.canonicalTitle) + ' ep ' + absEp + ': ' + paths.join(', '));

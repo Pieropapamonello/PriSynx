@@ -2,7 +2,10 @@
 // Mapping TMDB/IMDb/Kitsu -> pagine AnimeWorld da anime.stremio-italia.eu, poi
 // pagina anime -> token episodio -> /api/episode/info -> MP4 diretto (SweetPixel).
 
-var MAP_API = 'https://anime.stremio-italia.eu';
+var MAPPING_BASES = [
+  (typeof ANIME_MAPPING_API !== 'undefined' && ANIME_MAPPING_API) ? ANIME_MAPPING_API : 'https://animemapping.realbestia.com',
+  'https://anime.stremio-italia.eu'
+];
 var AW_BASE = 'https://www.animeworld.ac';
 var TMDB_KEY_FALLBACK = '68e094699525b18a70bab2f86b1fa706';
 var UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36';
@@ -89,12 +92,19 @@ function parseId(raw, episode) {
 
 function fetchMapping(provider, id, season, episode) {
   var q = '?ep=' + episode + (season ? '&s=' + season : '') + '&lang=it';
-  return req(MAP_API + '/' + provider + '/' + encodeURIComponent(id) + q, { headers: { 'User-Agent': UA, 'Accept': 'application/json' } })
-    .then(function (r) {
-      var j = parseJson(r.text);
-      if (!j || !j.ok) { log('mapping ' + provider + ':' + id + ' HTTP ' + r.status + (j && j.error ? ' ' + j.error : '')); return null; }
-      return j;
-    });
+  function tryBase(idx) {
+    if (idx >= MAPPING_BASES.length) return Promise.resolve(null);
+    var base = MAPPING_BASES[idx];
+    return req(base + '/' + provider + '/' + encodeURIComponent(id) + q, { headers: { 'User-Agent': UA, 'Accept': 'application/json' } })
+      .then(function (r) {
+        var j = parseJson(r.text);
+        if (j && j.ok && j.mappings && j.mappings.animeworld) return j;
+        return tryBase(idx + 1);
+      }).catch(function () {
+        return tryBase(idx + 1);
+      });
+  }
+  return tryBase(0);
 }
 
 function awPaths(map) {
@@ -185,8 +195,12 @@ function resolvePath(path, ep, isMovie) {
     var size = 0;
     if (/\.mp4/i.test(media)) {
       var pr = yield req(media, { headers: { 'User-Agent': UA, 'Referer': animeUrl, 'Range': 'bytes=0-0' } });
-      if (pr.status !== 206 && pr.status !== 200) { log('MP4 non raggiungibile HTTP ' + pr.status); return null; }
-      size = parseInt((pr.header('content-range').match(/\/(\d+)/) || [])[1], 10) || 0;
+      if (pr.status !== 206 && pr.status !== 200) {
+        log('MP4 probe Range HTTP ' + pr.status + ' (procedo senza size)');
+        size = 0;
+      } else {
+        size = parseInt((pr.header('content-range').match(/\/(\d+)/) || [])[1], 10) || 0;
+      }
     }
     return { url: media, headers: headers, size: size, num: entry.num, ita: isItaPath(path), pageTitle: title, hls: /\.m3u8/i.test(media) };
   });
@@ -218,6 +232,16 @@ function findStreams(tmdbId, mediaType, season, episode) {
         map = yield fetchMapping(id.provider, id.id, 0, id.episode || ep);
       }
       var paths = awPaths(map);
+      if (!paths.length && map) {
+        var kitsuId = (map.requested && map.requested.resolvedKitsuId) || (map.kitsu && map.kitsu.id);
+        if (kitsuId && (id.provider !== 'kitsu' || id.id !== String(kitsuId))) {
+          var kMap = yield fetchMapping('kitsu', String(kitsuId), 0, id.episode || ep);
+          if (kMap && awPaths(kMap).length) {
+            map = kMap;
+            paths = awPaths(map);
+          }
+        }
+      }
       if (!paths.length) { log('nessuna pagina AnimeWorld per ' + tmdbId); return []; }
       var absEp = (map.kitsu && parseInt(map.kitsu.episode, 10)) || id.episode || ep;
       log((map.kitsu && map.kitsu.canonicalTitle) + ' ep ' + absEp + ': ' + paths.join(', '));
