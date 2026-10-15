@@ -545,6 +545,11 @@ function getStreams(rawId, mediaType, reqSeason, reqEpisode) {
           return true;
         });
 
+        // Massimo 2 risoluzioni: massima e quella sotto (es. 1080p + 720p; 480p solo se parte da 720p)
+        if (uniqueVariants.length > 2) {
+          uniqueVariants = uniqueVariants.slice(0, 2);
+        }
+
         if (!uniqueVariants.length) {
           uniqueVariants.push({
             height: vixData.fhd ? 1080 : 720,
