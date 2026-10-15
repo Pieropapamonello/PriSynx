@@ -206,9 +206,9 @@
     },
     {
       "id": "prisynx-corsaroviola",
-      "name": "🏴‍☠️ Corsaro Viola",
-      "description": "Torrent P2P da Il Corsaro Viola con seeders, formati 4K/1080p e indicatori di cache",
-      "version": "1.0.0",
+      "name": "🏴‍☠️ IlCorsaroViola",
+      "description": "Torrent P2P da Il Corsaro Viola con seeders, bitrate reale e formati 4K/1080p",
+      "version": "1.0.1",
       "author": "PriSynx",
       "resources": ["stream"],
       "idPrefixes": ["tmdb:", "tt"],

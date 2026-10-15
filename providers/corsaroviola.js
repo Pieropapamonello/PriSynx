@@ -87,6 +87,17 @@ function formatSize(bytes) {
   return Math.round(bytes / 1048576) + ' MB';
 }
 
+function calculateBitrate(fileSizeBytes, runtimeMinutes) {
+  if (!fileSizeBytes || !runtimeMinutes || runtimeMinutes <= 0) return '';
+  var seconds = runtimeMinutes * 60;
+  var bps = (fileSizeBytes * 8) / seconds;
+  if (bps >= 1000000) {
+    var mbps = bps / 1000000;
+    return (mbps >= 10 ? mbps.toFixed(1) : mbps.toFixed(2)).replace(/\.0+$/, '') + ' Mbps';
+  }
+  return Math.round(bps / 1000) + ' kbps';
+}
+
 function parseQuality(t) {
   var s = String(t || '').toLowerCase();
   if (/2160p|4k|uhd/i.test(s)) return '2160p';
@@ -138,7 +149,7 @@ function parseId(raw) {
   return null;
 }
 
-function getInfo(rawId, isTv) {
+function getInfo(rawId, isTv, season, episode) {
   return run(function* () {
     var parsed = parseId(rawId);
     if (!parsed) return null;
@@ -151,26 +162,44 @@ function getInfo(rawId, isTv) {
       var hit = (fJson && (isTv ? fJson.tv_results : fJson.movie_results)) || [];
       if (hit.length) {
         parsed.tmdbId = String(hit[0].id);
-        return {
-          tmdbId: parsed.tmdbId,
-          title: (isTv ? hit[0].name : hit[0].title) || '',
-          year: String((isTv ? hit[0].first_air_date : hit[0].release_date) || '').slice(0, 4)
-        };
       }
     }
 
     if (parsed.tmdbId) {
-      var infoUrl = 'https://api.themoviedb.org/3/' + (isTv ? 'tv/' : 'movie/') + parsed.tmdbId + '?api_key=' + key + '&language=it-IT';
-      var iRes = yield req(infoUrl);
-      var iJson = parseJson(iRes.text);
-      if (iJson) {
-        return {
-          tmdbId: parsed.tmdbId,
-          title: (isTv ? iJson.name : iJson.title) || '',
-          year: String((isTv ? iJson.first_air_date : iJson.release_date) || '').slice(0, 4)
-        };
+      var title = '', year = '', runtime = 0;
+      if (isTv) {
+        var epUrl = 'https://api.themoviedb.org/3/tv/' + parsed.tmdbId + '/season/' + (season || 1) + '/episode/' + (episode || 1) + '?api_key=' + key + '&language=it-IT';
+        var epRes = yield req(epUrl);
+        var epJson = parseJson(epRes.text);
+        if (epJson && epJson.runtime) runtime = parseInt(epJson.runtime, 10) || 0;
+
+        var tvUrl = 'https://api.themoviedb.org/3/tv/' + parsed.tmdbId + '?api_key=' + key + '&language=it-IT';
+        var tvRes = yield req(tvUrl);
+        var tvJson = parseJson(tvRes.text);
+        if (tvJson) {
+          title = tvJson.name || '';
+          year = String(tvJson.first_air_date || '').slice(0, 4);
+          if (!runtime && Array.isArray(tvJson.episode_run_time) && tvJson.episode_run_time.length) {
+            runtime = parseInt(tvJson.episode_run_time[0], 10) || 0;
+          }
+        }
+      } else {
+        var movieUrl = 'https://api.themoviedb.org/3/movie/' + parsed.tmdbId + '?api_key=' + key + '&language=it-IT';
+        var mRes = yield req(movieUrl);
+        var mJson = parseJson(mRes.text);
+        if (mJson) {
+          title = mJson.title || '';
+          year = String(mJson.release_date || '').slice(0, 4);
+          runtime = parseInt(mJson.runtime, 10) || 0;
+        }
       }
-      return { tmdbId: parsed.tmdbId, title: '', year: '' };
+
+      return {
+        tmdbId: parsed.tmdbId,
+        title: title,
+        year: year,
+        runtime: runtime
+      };
     }
 
     return null;
@@ -186,7 +215,7 @@ function findStreams(tmdbId, mediaType, season, episode) {
       var s = parseInt(season, 10) || 1;
       var ep = parseInt(episode, 10) || 1;
 
-      var info = yield getInfo(tmdbId, isTv);
+      var info = yield getInfo(tmdbId, isTv, s, ep);
       var resolvedTmdbId = (info && info.tmdbId) || String(tmdbId || '').replace(/^tmdb:/i, '').trim();
       if (!/^\d+$/.test(resolvedTmdbId)) {
         log('ID TMDB non valido: ' + tmdbId);
@@ -198,9 +227,9 @@ function findStreams(tmdbId, mediaType, season, episode) {
 
       var apiUrl = '';
       if (isTv) {
-        apiUrl = apiBase + '/tv?tmdb_id=' + encodeURIComponent(resolvedTmdbId + ':' + s + ':' + ep) + '&debrid=rd,tb&token=' + encodeURIComponent(apiToken);
+        apiUrl = apiBase + '/tv?tmdb_id=' + encodeURIComponent(resolvedTmdbId + ':' + s + ':' + ep) + '&token=' + encodeURIComponent(apiToken);
       } else {
-        apiUrl = apiBase + '/movie?tmdb_id=' + encodeURIComponent(resolvedTmdbId) + '&debrid=rd,tb&token=' + encodeURIComponent(apiToken);
+        apiUrl = apiBase + '/movie?tmdb_id=' + encodeURIComponent(resolvedTmdbId) + '&token=' + encodeURIComponent(apiToken);
       }
 
       var res = yield req(apiUrl, { headers: { 'User-Agent': UA, 'Accept': 'application/json' } });
@@ -212,6 +241,7 @@ function findStreams(tmdbId, mediaType, season, episode) {
 
       var title = (info && info.title) || '';
       var year = (info && info.year) || '';
+      var runtime = (info && info.runtime) || (isTv ? 45 : 100);
       var epLabel = isTv ? ' S' + pad2(s) + 'E' + pad2(ep) : '';
 
       var streams = [];
@@ -229,6 +259,7 @@ function findStreams(tmdbId, mediaType, season, episode) {
         var seeders = typeof item.seeders === 'number' ? item.seeders : 0;
         var fileSize = (item.file && item.file.size) || (item.size) || 0;
         var fileName = (item.file && item.file.title) || rawTitle;
+        var bitrate = calculateBitrate(fileSize, runtime);
 
         var isIta = /ita|italian|italiano/i.test(rawTitle);
         var isSub = /sub\s*ita|multisub/i.test(rawTitle);
@@ -238,21 +269,16 @@ function findStreams(tmdbId, mediaType, season, episode) {
 
         var technical = [
           '\uD83C\uDF9E\uFE0F ' + quality + (codec ? ' \u00B7 ' + codec : ''),
+          bitrate ? '\uD83D\uDCE1 ' + bitrate : '',
           audio ? '\uD83D\uDD0A ' + audio : '',
           fileSize ? '\uD83D\uDCBE ' + formatSize(fileSize) : '',
           '\uD83D\uDC65 ' + seeders + ' seed' + (seeders === 1 ? '' : 's')
         ].filter(Boolean).join(' \u00B7 ');
 
-        var cacheFlags = [];
-        if (item.cached_rd) cacheFlags.push('RD');
-        if (item.cached_tb) cacheFlags.push('TB');
-        var cacheLine = cacheFlags.length ? '\u26A1 Cache: ' + cacheFlags.join(' \u00B7 ') : '';
-
         var details = [
           technical,
-          cacheLine,
           '\uD83D\uDCC4 ' + fileName,
-          '\uD83C\uDFAC Il Corsaro Viola \u00B7 P2P Torrent \u00B7 ' + langTag
+          '\uD83C\uDFAC IlCorsaroViola \u00B7 P2P Torrent \u00B7 ' + langTag
         ].filter(Boolean).join('\n');
 
         // Ordinamento: priorità alta per ITA, secondaria per altri
@@ -261,7 +287,7 @@ function findStreams(tmdbId, mediaType, season, episode) {
         var fileIdx = item.file && typeof item.file.file_index === 'number' ? item.file.file_index : undefined;
 
         streams.push({
-          name: sortPrefix(quality, priority) + '\uD83C\uDFF4\u200D\u2620\uFE0F CorsaroViola ' + quality + ' ' + langTag + ' \uD83D\uDC65 ' + seeders + (item.cached_rd ? ' \u26A1' : ''),
+          name: sortPrefix(quality, priority) + '\uD83C\uDFF4\u200D\u2620\uFE0F IlCorsaroViola ' + quality + ' ' + langTag + ' \uD83D\uDC65 ' + seeders,
           title: heading + '\n' + details,
           size: details,
           url: item.magnet,
