@@ -471,10 +471,12 @@ function getStreams(tmdbId, mediaType, season, episode) {
       return [];
     }
 
+    var embedOrigin = base;
+    try { embedOrigin = new URL(embedUrl).origin; } catch (e) {}
     var playHeaders = {
       "User-Agent": VIX_UA,
-      "Referer": base + "/",
-      "Origin": base
+      "Referer": embedUrl,
+      "Origin": embedOrigin
     };
 
     var heading = "\uD83D\uDCC1 " + (meta.title || "VixSrc") + (isTv ? " S" + pad2(season) + "E" + pad2(episode) : "") + (meta.year ? " (" + meta.year + ")" : "");
@@ -494,11 +496,13 @@ function getStreams(tmdbId, mediaType, season, episode) {
         size: "\uD83C\uDF9B\uFE0F Auto quality \u00B7 \uD83D\uDD0A Multi-audio",
         url: masterUrl,
         quality: "Auto",
-        type: "hls",
+        type: "direct",
         provider: "vixsrc",
         headers: playHeaders,
+        referer: embedUrl,
+        userAgent: VIX_UA,
         behaviorHints: {
-          notWebReady: true,
+          notWebReady: false,
           headers: playHeaders,
           proxyHeaders: { request: playHeaders },
           filename: "vixsrc-auto.m3u8"
@@ -639,7 +643,8 @@ function getStreams(tmdbId, mediaType, season, episode) {
         "\uD83C\uDFAC VixSrc \u00B7 HLS" + (hasItalianAudio ? " \u00B7 " + FLAGS.it : (langBadge ? " \u00B7" + langBadge : ""))
       ].filter(Boolean).join("\n");
 
-      var streamUrl = v.url || masterUrl;
+      var isFhd = v.quality === "1080p" || v.height >= 1080;
+      var streamUrl = isFhd ? masterUrl : masterUrl.replace(/([?&])h=1(&|$)/, "$1").replace(/[?&]$/, "");
 
       return {
         name: sortPrefix(v.height, syncLevel) + "💎 VixSrc " + v.quality + langBadge,
@@ -647,14 +652,16 @@ function getStreams(tmdbId, mediaType, season, episode) {
         size: details,
         url: streamUrl,
         quality: v.quality,
-        type: "hls",
+        type: "direct",
         provider: "vixsrc",
         headers: playHeaders,
+        referer: embedUrl,
+        userAgent: VIX_UA,
         subtitles: subTracks.map(function (s) {
           return { url: s.uri, name: s.name, language: s.lang };
         }),
         behaviorHints: {
-          notWebReady: true,
+          notWebReady: false,
           headers: playHeaders,
           proxyHeaders: { request: playHeaders },
           filename: "vixsrc-" + v.quality + ".m3u8"
