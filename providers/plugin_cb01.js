@@ -476,24 +476,20 @@ function findEpisodeBlock(html, season, episode) {
     'STAGIONE\\s+' + season + '\\s*-\\s*EPISODIO\\s+' + episode + '\\b'
   ];
 
-  var epIdx = -1;
-  var epMatch = null;
-
-  for (var i = 0; i < epLabels.length && epIdx < 0; i++) {
-    var epRe = new RegExp(epLabels[i], 'i');
-    var m = epRe.exec(html);
-    if (m) {
-      epIdx = m.index;
-      epMatch = m[0];
+  // The label also appears without links (page title "– 2×07"): take the first occurrence followed by links.
+  // No label = episode not on the page yet; never fall back to the whole season.
+  for (var i = 0; i < epLabels.length; i++) {
+    var epRe = new RegExp(epLabels[i], 'gi');
+    var m;
+    while ((m = epRe.exec(html)) !== null) {
+      var block = episodeBlockAt(html, m.index, m[0]);
+      if (/stayonline\.pro/i.test(block)) return block;
     }
   }
+  return null;
+}
 
-  if (epIdx < 0) {
-    var spHeadRe = new RegExp('<div[^>]+class="[^"]*sp-head[^"]*"[^>]*>(?:[\\s\\S]*?)\\bSTAGIONE\\s+0?' + season + '\\b[\\s\\S]*?<div[^>]+class="[^"]*sp-body[^"]*"[^>]*>([\\s\\S]*?)<div[^>]+class="[^"]*spdiv[^"]*"', 'i');
-    var spMatch = html.match(spHeadRe);
-    return spMatch ? spMatch[1] : null;
-  }
-
+function episodeBlockAt(html, epIdx, epMatch) {
   var nextEpRe = /S\d+E\d+|S0?\d+E\d+|\d+\s*(?:x|×|&#215;)\s*\d+|<div\s+class="(?:sp-head|spdiv)"/gi;
   var nextIdx = -1;
   var searchStart = epIdx + epMatch.length;
@@ -574,16 +570,11 @@ function extractFromPage(pageUrl, season, episode, title, cb) {
 
     if (isSeries) {
       block = findEpisodeBlock(html, season, episode);
-      if (block) {
-        targetHtml = block;
-      }
+      if (!block) return cb([]);
+      targetHtml = block;
     }
 
     var sections = extractTables(targetHtml);
-
-    if (sections.length === 0 && isSeries && targetHtml !== html) {
-      sections = extractTables(html);
-    }
 
     if (sections.length === 0) {
       var linkRe = /href=["'](https?:\/\/[^"']*stayonline\.pro\/[^"']*)["']/gi;
