@@ -489,8 +489,8 @@ function getStreams(tmdbId, mediaType, season, episode) {
     if (!masterContent || !masterContent.trim().startsWith("#EXTM3U")) {
       console.log("[VixSrc] Fallback to direct master playlist for " + (meta.title || tmdbId));
       return [{
-        name: sortPrefix(1080, 0) + "💎 VixSrc Auto \uD83C\uDDEE\uD83C\uDDF9",
-        title: heading + "\n\uD83C\uDF9B\uFE0F Auto quality \u00B7 \uD83D\uDD0A Multi-audio\n\uD83C\uDFAC VixSrc \u00B7 HLS \u00B7 \uD83C\uDDEE\uD83C\uDDF9",
+        name: sortPrefix(1080, 3) + "💎 VixSrc Auto \u2753",
+        title: heading + "\n\uD83C\uDF9B\uFE0F Auto quality \u00B7 \uD83D\uDD0A Multi-audio\n\uD83C\uDFAC VixSrc \u00B7 HLS \u00B7 \u2753",
         size: "\uD83C\uDF9B\uFE0F Auto quality \u00B7 \uD83D\uDD0A Multi-audio",
         url: masterUrl,
         quality: "Auto",
@@ -541,13 +541,26 @@ function getStreams(tmdbId, mediaType, season, episode) {
     // Extract audio and subtitles
     var audioTracks = [];
     var subTracks = [];
+    var hasItalianAudio = false;
+    var detectedAudioFlags = [];
+
     common.forEach(function (line) {
       if (!line.startsWith("#EXT-X-MEDIA:")) return;
       var media = attributes(line);
       var flag = languageFlag(media.LANGUAGE, media.NAME);
       if (media.TYPE === "AUDIO") {
+        var rawLang = normalizeLang(media.LANGUAGE || "");
+        var rawName = normalizeLang(media.NAME || "");
+        var isIta = (rawLang === "it" || rawLang === "ita" || rawLang === "italian" || rawLang === "italiano" ||
+                     rawName === "it" || rawName === "ita" || rawName === "italian" || rawName === "italiano" ||
+                     /^ita/i.test(rawLang) || /^ita/i.test(rawName));
+        if (isIta) {
+          hasItalianAudio = true;
+          flag = FLAGS.it;
+        }
         var label = flag || media.NAME || media.LANGUAGE;
         if (label && audioTracks.indexOf(label) === -1) audioTracks.push(label);
+        if (flag && detectedAudioFlags.indexOf(flag) === -1) detectedAudioFlags.push(flag);
       } else if (media.TYPE === "SUBTITLES") {
         subTracks.push({
           uri: absUrl(media.URI, masterUrl),
@@ -558,8 +571,30 @@ function getStreams(tmdbId, mediaType, season, episode) {
       }
     });
 
-    var audioLine = audioTracks.length ? "\uD83D\uDD0A " + audioTracks.join(" ") : "\uD83D\uDD0A \uD83C\uDDEE\uD83C\uDDF9 Italiano";
+    if (hasItalianAudio) {
+      audioTracks.sort(function (a, b) {
+        return (b === FLAGS.it ? 1 : 0) - (a === FLAGS.it ? 1 : 0);
+      });
+    }
+
+    var audioLine = audioTracks.length
+      ? "\uD83D\uDD0A " + audioTracks.join(" ")
+      : (hasItalianAudio ? "\uD83D\uDD0A \uD83C\uDDEE\uD83C\uDDF9 Italiano" : "\uD83D\uDD0A \u2753 Lingua sconosciuta / originale");
     var subLine = subtitleSummary(subTracks);
+
+    var hasSubIta = subTracks.some(function (s) { return s.flag === FLAGS.it || /ita/i.test(s.lang); });
+    var langBadge = "";
+    var syncLevel = 3;
+    if (hasItalianAudio) {
+      langBadge = " " + FLAGS.it;
+      syncLevel = 0;
+    } else if (detectedAudioFlags.length > 0) {
+      langBadge = " " + detectedAudioFlags.join(" ") + (hasSubIta ? " " + FLAGS.it + " SUB" : "");
+      syncLevel = hasSubIta ? 1 : 2;
+    } else {
+      langBadge = " \u2753";
+      syncLevel = 3;
+    }
 
     // Sort variants: 1080p > 720p > etc.
     variants.sort(function (a, b) { return b.height - a.height || b.bandwidth - a.bandwidth; });
@@ -596,13 +631,13 @@ function getStreams(tmdbId, mediaType, season, episode) {
         technical,
         audioLine,
         subLine,
-        "\uD83C\uDFAC VixSrc \u00B7 HLS \u00B7 \uD83C\uDDEE\uD83C\uDDF9"
+        "\uD83C\uDFAC VixSrc \u00B7 HLS" + (hasItalianAudio ? " \u00B7 " + FLAGS.it : (langBadge ? " \u00B7" + langBadge : ""))
       ].filter(Boolean).join("\n");
 
       var streamUrl = v.url === masterUrl ? masterUrl : buildInlineVariantUri(v, common, masterUrl);
 
       return {
-        name: sortPrefix(v.height, 0) + "💎 VixSrc " + v.quality + " \uD83C\uDDEE\uD83C\uDDF9",
+        name: sortPrefix(v.height, syncLevel) + "💎 VixSrc " + v.quality + langBadge,
         title: heading + "\n" + details,
         size: details,
         url: streamUrl,
