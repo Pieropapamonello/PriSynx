@@ -84,7 +84,8 @@ function sortPrefix(quality, fileSize, priority) {
 
   var p = (typeof priority === 'number' && priority >= 0 && priority < ZW_PREFIX.length) ? priority : 0;
 
-  return ZW_PREFIX[r] +
+  return '\uFEFF' +
+         ZW_PREFIX[r] +
          ZW_PREFIX[(inv >> 15) & 7] +
          ZW_PREFIX[(inv >> 12) & 7] +
          ZW_PREFIX[(inv >> 9) & 7] +
