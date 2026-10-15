@@ -999,20 +999,16 @@ function getStreams(tmdbId, mediaType, season, episode) {
           title: heading + "\n" + details,
           // Text under the name: NuvioTV shows `size + language` (instead of `title`), Nuvio Mobile shows
           // `quality + size + language` and ignores `title`. So the details go in `size` for both apps.
-          url: rendition.url,
+          size: details,
+          url: ita ? buildMasterDataUri(rendition.url, q, ita, enc.original) : rendition.url,
           quality: q.label,
-          type: "direct",
+          type: "hls",
           provider: "dualsync",
           headers: enc.headers,
           audioSync: ita ? sync.info : undefined,
           // NuvioTV adds it to the device audio delay (>0 = audio later); other apps ignore it.
           // audioDelayLanguage: the delay only applies to the ITA tracks (audio + subtitles from vixsrc), not to the original audio.
-          behaviorHints: {
-            notWebReady: false,
-            headers: enc.headers,
-            audioDelayMs: (ita && autoDelayMs(sync.info) !== undefined) ? autoDelayMs(sync.info) : undefined,
-            audioDelayLanguage: ita ? "it" : undefined
-          },
+          behaviorHints: ita && autoDelayMs(sync.info) !== undefined ? { audioDelayMs: autoDelayMs(sync.info), audioDelayLanguage: "it" } : undefined,
           // 4K before FHD, then best verdict, then a measured offset before an estimate.
           _rank: -Number(qkey) * 1000 + (ita ? LEVEL_RANK[sync.level] * 10 + (sync.measured ? 0 : 5) : 0)
         });
