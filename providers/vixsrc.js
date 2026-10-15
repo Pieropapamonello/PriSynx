@@ -471,12 +471,10 @@ function getStreams(tmdbId, mediaType, season, episode) {
       return [];
     }
 
-    var masterOrigin = "https://vixcloud.co";
-    try { masterOrigin = new URL(masterUrl).origin; } catch (e) {}
     var playHeaders = {
       "User-Agent": VIX_UA,
-      "Referer": masterOrigin + "/",
-      "Origin": masterOrigin
+      "Referer": base + "/",
+      "Origin": base
     };
 
     var heading = "\uD83D\uDCC1 " + (meta.title || "VixSrc") + (isTv ? " S" + pad2(season) + "E" + pad2(episode) : "") + (meta.year ? " (" + meta.year + ")" : "");
@@ -496,13 +494,11 @@ function getStreams(tmdbId, mediaType, season, episode) {
         size: "\uD83C\uDF9B\uFE0F Auto quality \u00B7 \uD83D\uDD0A Multi-audio",
         url: masterUrl,
         quality: "Auto",
-        type: "direct",
+        type: "hls",
         provider: "vixsrc",
         headers: playHeaders,
-        referer: masterOrigin + "/",
-        userAgent: VIX_UA,
         behaviorHints: {
-          notWebReady: false,
+          notWebReady: true,
           headers: playHeaders,
           proxyHeaders: { request: playHeaders },
           filename: "vixsrc-auto.m3u8"
@@ -643,14 +639,7 @@ function getStreams(tmdbId, mediaType, season, episode) {
         "\uD83C\uDFAC VixSrc \u00B7 HLS" + (hasItalianAudio ? " \u00B7 " + FLAGS.it : (langBadge ? " \u00B7" + langBadge : ""))
       ].filter(Boolean).join("\n");
 
-      var streamUrl = v.url || masterUrl;
-      var streamOrigin = masterOrigin;
-      try { streamOrigin = new URL(streamUrl).origin; } catch (e) {}
-      var streamHeaders = {
-        "User-Agent": VIX_UA,
-        "Referer": streamOrigin + "/",
-        "Origin": streamOrigin
-      };
+      var streamUrl = v.url === masterUrl ? masterUrl : buildInlineVariantUri(v, common, masterUrl);
 
       return {
         name: sortPrefix(v.height, syncLevel) + "💎 VixSrc " + v.quality + langBadge,
@@ -658,18 +647,16 @@ function getStreams(tmdbId, mediaType, season, episode) {
         size: details,
         url: streamUrl,
         quality: v.quality,
-        type: "direct",
+        type: "hls",
         provider: "vixsrc",
-        headers: streamHeaders,
-        referer: streamOrigin + "/",
-        userAgent: VIX_UA,
+        headers: playHeaders,
         subtitles: subTracks.map(function (s) {
           return { url: s.uri, name: s.name, language: s.lang };
         }),
         behaviorHints: {
-          notWebReady: false,
-          headers: streamHeaders,
-          proxyHeaders: { request: streamHeaders },
+          notWebReady: true,
+          headers: playHeaders,
+          proxyHeaders: { request: playHeaders },
           filename: "vixsrc-" + v.quality + ".m3u8"
         }
       };
