@@ -69,14 +69,29 @@ var FLAG_IT = '\uD83C\uDDEE\uD83C\uDDF9';
 var FLAG_EN = '\uD83C\uDDEC\uD83C\uDDE7';
 var ZW_PREFIX = ['\u200B', '\u200C', '\u200D', '\u2060', '\u2061', '\u2062', '\u2063', '\u2064'];
 
-function sortPrefix(quality, priority) {
+function sortPrefix(quality, fileSize, priority) {
   var qNum = Number(String(quality || '').replace(/[^0-9]/g, '')) || 0;
   var r = 3;
   if (qNum >= 2160) r = 0;
   else if (qNum >= 1080) r = 1;
   else if (qNum >= 720) r = 2;
+
+  // Dimensione invertita: max 262143 MB (~256 GB) su 6 cifre base-8
+  var mb = Math.floor((Number(fileSize) || 0) / (1024 * 1024));
+  if (mb < 0) mb = 0;
+  if (mb > 262143) mb = 262143;
+  var inv = 262143 - mb;
+
   var p = (typeof priority === 'number' && priority >= 0 && priority < ZW_PREFIX.length) ? priority : 0;
-  return ZW_PREFIX[r] + ZW_PREFIX[p];
+
+  return ZW_PREFIX[r] +
+         ZW_PREFIX[(inv >> 15) & 7] +
+         ZW_PREFIX[(inv >> 12) & 7] +
+         ZW_PREFIX[(inv >> 9) & 7] +
+         ZW_PREFIX[(inv >> 6) & 7] +
+         ZW_PREFIX[(inv >> 3) & 7] +
+         ZW_PREFIX[inv & 7] +
+         ZW_PREFIX[p];
 }
 
 function pad2(n) { return (n < 10 ? '0' : '') + n; }
@@ -287,7 +302,7 @@ function findStreams(tmdbId, mediaType, season, episode) {
         var fileIdx = item.file && typeof item.file.file_index === 'number' ? item.file.file_index : undefined;
 
         streams.push({
-          name: sortPrefix(quality, priority) + '\uD83C\uDFF4\u200D\u2620\uFE0F IlCorsaroViola ' + quality + ' ' + langTag + ' \uD83D\uDC65 ' + seeders,
+          name: sortPrefix(quality, fileSize, priority) + '\uD83C\uDFF4\u200D\u2620\uFE0F IlCorsaroViola ' + quality + ' ' + langTag + ' \uD83D\uDC65 ' + seeders,
           title: heading + '\n' + details,
           size: details,
           url: item.magnet,
