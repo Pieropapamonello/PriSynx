@@ -842,16 +842,21 @@ function getStreams(tmdbId, mediaType, season, episode) {
         // Text under the name: NuvioTV shows `size + language` (instead of `title`), Nuvio Mobile shows
         // `quality + size + language` and ignores `title`. So the details go in `size` for both apps.
         size: details,
-        url: ita ? buildMasterDataUri(src.url, q, ita) : src.url,
+        url: src.url,
         quality: q.label,
-        type: "hls",
+        type: "direct",
         provider: "movyita",
         headers: movy.headers,
         subtitles: movy.subtitles,
         audioSync: ita ? sync.info : undefined,
         // NuvioTV adds it to the device audio delay (>0 = audio later); other apps ignore it.
         // audioDelayLanguage: the delay only applies to the ITA tracks (audio + subtitles from vixsrc), not to the original audio.
-        behaviorHints: ita && autoDelayMs(sync.info) !== undefined ? { audioDelayMs: autoDelayMs(sync.info), audioDelayLanguage: "it" } : undefined,
+        behaviorHints: {
+          notWebReady: false,
+          headers: movy.headers,
+          audioDelayMs: (ita && autoDelayMs(sync.info) !== undefined) ? autoDelayMs(sync.info) : undefined,
+          audioDelayLanguage: ita ? "it" : undefined
+        },
         _rank: Number(src.qkey)
       };
     });
