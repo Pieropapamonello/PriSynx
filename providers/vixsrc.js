@@ -639,7 +639,7 @@ function getStreams(tmdbId, mediaType, season, episode) {
         "\uD83C\uDFAC VixSrc \u00B7 HLS" + (hasItalianAudio ? " \u00B7 " + FLAGS.it : (langBadge ? " \u00B7" + langBadge : ""))
       ].filter(Boolean).join("\n");
 
-      var streamUrl = v.url === masterUrl ? masterUrl : buildInlineVariantUri(v, common, masterUrl);
+      var streamUrl = v.url || masterUrl;
 
       return {
         name: sortPrefix(v.height, syncLevel) + "💎 VixSrc " + v.quality + langBadge,
