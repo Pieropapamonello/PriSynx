@@ -607,6 +607,11 @@ function getStreams(tmdbId, mediaType, season, episode) {
       return true;
     });
 
+    // Massimo 2 risoluzioni: la massima e quella sotto (es. 1080p + 720p; 480p solo se parte da 720p)
+    if (uniqueVariants.length > 2) {
+      uniqueVariants = uniqueVariants.slice(0, 2);
+    }
+
     // If no variants were parsed, provide the master stream directly
     if (!uniqueVariants.length) {
       var fhdFlag = /window\.canPlayFHD\s*=\s*true/.test(html) || /[?&]canPlayFHD=1/.test(embedUrl);
