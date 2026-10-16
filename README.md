@@ -87,8 +87,14 @@ flowchart TD
 
 ## 📦 Installazione in Nuvio
 
-Aggiungi il manifest nella sezione **Plugin** di Nuvio o NuvioTV:
+Aggiungi i manifest nella sezione **Plugin** di Nuvio o NuvioTV:
 
+### 1. PriSynx (Streaming Diretto / HLS)
 ```text
 https://raw.githubusercontent.com/qwertyuiop8899/PriSynx/main/manifest.json
+```
+
+### 2. Il Corsaro Viola (Torrent P2P Isolato)
+```text
+https://raw.githubusercontent.com/qwertyuiop8899/PriSynx/main/corsaroviola/manifest.json
 ```
