@@ -1,7 +1,3 @@
-// Il Corsaro Viola (ICV) - Provider Torrent P2P per NuvioTV / Nuvio Mobile
-// Cifratura solida a livello sorgente (XOR polimorfico + Base64) per proteggere endpoint e token da scraping.
-// Sintassi pura ES5 a generatori (run / yield) per piena compatibilità con Hermes e QuickJS.
-
 var B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 
 function b64Dec(s) {
@@ -28,7 +24,6 @@ function decStr(b64, key) {
   return res;
 }
 
-// Chiave dinamica derivata a runtime per decifrare endpoint e token in memoria
 var _K = ['Corsaro', 'Viola', 'Nuvio', 'Key', '2026'].join('_');
 var _E_BASE = 'KxsGA1tdQG5lWUFdUG9gQ09HXWpxXUptAw==';
 var _E_TOK = 'MAsHGQkUXCg/DAwIGSkRKhIAAC8kFxow';
