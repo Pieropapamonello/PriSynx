@@ -68,9 +68,22 @@ function fetchWithTimeout(url, options, ms) {
   });
 }
 
+function cfMitigation(res) {
+  try {
+    return (res && res.headers && typeof res.headers.get === "function" && res.headers.get("cf-mitigated")) || "";
+  } catch (_) {
+    return "";
+  }
+}
+
+function httpError(res, url) {
+  var cf = cfMitigation(res);
+  return new Error("HTTP " + res.status + (cf ? " (Cloudflare " + cf + ")" : "") + " " + url.split("?")[0]);
+}
+
 function send(url, options, ms) {
   return fetchWithTimeout(url, options, ms).then(function (res) {
-    if (!res.ok) throw new Error("HTTP " + res.status + " " + url.split("?")[0]);
+    if (!res.ok) throw httpError(res, url);
     return res;
   });
 }
@@ -289,16 +302,112 @@ function extractAnimePaths(mappingPayload) {
   return paths;
 }
 
+// ---------------------------------------------------------------- AnimeUnity Session (cookies + CSRF)
+
+// Laravel app: keeps XSRF-TOKEN / animeunity_session cookies and the csrf meta token,
+// so XHR endpoints (info_api, embed-url) look like they come from the site itself.
+var auSession = { cookies: {}, csrf: "", warming: null };
+
+function auStoreCookies(res) {
+  try {
+    var h = res && res.headers;
+    if (!h) return;
+    var list = [];
+    if (typeof h.getSetCookie === "function") list = h.getSetCookie() || [];
+    if (!list.length && typeof h.get === "function") {
+      var raw = h.get("set-cookie");
+      if (raw) list = String(raw).split(/,(?=\s*[A-Za-z0-9_\-]+=)/);
+    }
+    for (var i = 0; i < list.length; i++) {
+      var pair = String(list[i] || "").split(";")[0];
+      var eq = pair.indexOf("=");
+      if (eq > 0) auSession.cookies[pair.slice(0, eq).trim()] = pair.slice(eq + 1).trim();
+    }
+  } catch (_) {}
+}
+
+function auStoreCsrf(html) {
+  var m = String(html || "").match(/<meta[^>]+name=["']csrf-token["'][^>]+content=["']([^"']+)["']/i);
+  if (m) auSession.csrf = m[1];
+}
+
+function auCookieHeader() {
+  var parts = [];
+  for (var k in auSession.cookies) {
+    if (Object.prototype.hasOwnProperty.call(auSession.cookies, k)) parts.push(k + "=" + auSession.cookies[k]);
+  }
+  return parts.join("; ");
+}
+
+function auHeaders(kind, referer) {
+  var h = {
+    "User-Agent": DEFAULT_UA,
+    "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7",
+    "Referer": referer || AU_BASE + "/"
+  };
+  if (kind === "xhr") {
+    h["Accept"] = "application/json, text/plain, */*";
+    h["X-Requested-With"] = "XMLHttpRequest";
+    h["Sec-Fetch-Dest"] = "empty";
+    h["Sec-Fetch-Mode"] = "cors";
+    h["Sec-Fetch-Site"] = "same-origin";
+    if (auSession.csrf) h["X-CSRF-TOKEN"] = auSession.csrf;
+    var xsrf = auSession.cookies["XSRF-TOKEN"];
+    if (xsrf) {
+      try { h["X-XSRF-TOKEN"] = decodeURIComponent(xsrf); } catch (_) { h["X-XSRF-TOKEN"] = xsrf; }
+    }
+  } else {
+    h["Accept"] = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8";
+    h["Upgrade-Insecure-Requests"] = "1";
+    h["Sec-Fetch-Dest"] = "document";
+    h["Sec-Fetch-Mode"] = "navigate";
+    h["Sec-Fetch-Site"] = "same-origin";
+  }
+  var cookie = auCookieHeader();
+  if (cookie) h["Cookie"] = cookie;
+  return h;
+}
+
+function auWarmup() {
+  if (auSession.warming) return auSession.warming;
+  auSession.warming = fetchWithTimeout(AU_BASE + "/", { headers: auHeaders("page", AU_BASE + "/") }, REQUEST_TIMEOUT_MS)
+    .then(function (res) {
+      auStoreCookies(res);
+      return res.text();
+    })
+    .then(function (html) { auStoreCsrf(html); }, function () {})
+    .then(function () { auSession.warming = null; });
+  return auSession.warming;
+}
+
+// GET on AnimeUnity with session handling; on 403/419/503 refreshes the session once and retries.
+function auRequest(url, kind, referer) {
+  return __async(function* () {
+    var res = null;
+    for (var attempt = 0; attempt < 2; attempt++) {
+      res = yield fetchWithTimeout(url, { headers: auHeaders(kind, referer) }, REQUEST_TIMEOUT_MS);
+      auStoreCookies(res);
+      if (res.ok) {
+        var text = yield res.text();
+        if (kind !== "xhr") auStoreCsrf(text);
+        return text;
+      }
+      if (attempt === 0 && (res.status === 403 || res.status === 419 || res.status === 503)) {
+        yield auWarmup();
+        continue;
+      }
+      break;
+    }
+    throw httpError(res, url);
+  });
+}
+
 // ---------------------------------------------------------------- AnimeUnity Page Parser
 
 function resolveEpisodeEmbedUrl(animePath, requestedEpisode) {
   return __async(function* () {
     var pageUrl = absUrl(animePath, AU_BASE);
-    var pageHtml = yield getText(pageUrl, {
-      "User-Agent": DEFAULT_UA,
-      "Referer": AU_BASE + "/",
-      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
-    }, REQUEST_TIMEOUT_MS);
+    var pageHtml = yield auRequest(pageUrl, "page", AU_BASE + "/");
 
     var episodesAttr = extractTagAttr(pageHtml, "video-player", "episodes");
     var parsedEpisodes = [];
@@ -338,12 +447,7 @@ function resolveEpisodeEmbedUrl(animePath, requestedEpisode) {
         var infoUrl = AU_BASE + "/info_api/" + animeId + "/1?start_range=" + startRange + "&end_range=" + endRange;
 
         try {
-          var infoData = yield getJson(infoUrl, {
-            "User-Agent": DEFAULT_UA,
-            "Referer": pageUrl,
-            "X-Requested-With": "XMLHttpRequest",
-            "Accept": "application/json"
-          }, REQUEST_TIMEOUT_MS);
+          var infoData = JSON.parse(yield auRequest(infoUrl, "xhr", pageUrl));
 
           var apiEpisodes = (infoData && Array.isArray(infoData.episodes)) ? infoData.episodes : [];
           for (var j = 0; j < apiEpisodes.length; j++) {
@@ -365,11 +469,7 @@ function resolveEpisodeEmbedUrl(animePath, requestedEpisode) {
       } else if (targetEpisode.id) {
         var embedEndpoint = AU_BASE + "/embed-url/" + targetEpisode.id;
         try {
-          var embedResp = yield getText(embedEndpoint, {
-            "User-Agent": DEFAULT_UA,
-            "Referer": pageUrl,
-            "X-Requested-With": "XMLHttpRequest"
-          }, REQUEST_TIMEOUT_MS);
+          var embedResp = yield auRequest(embedEndpoint, "xhr", pageUrl);
           if (embedResp && /^https?:\/\//i.test(embedResp.trim())) {
             embedUrl = embedResp.trim();
           }
@@ -377,8 +477,10 @@ function resolveEpisodeEmbedUrl(animePath, requestedEpisode) {
       }
     }
 
-    // Single episode / movie fallback
-    if (!embedUrl) {
+    // Single episode / movie fallback only: on multi-episode pages the default embed_url
+    // is another episode (e.g. ep 1), so a missing episode must yield no stream.
+    var totalEpisodes = Number(extractTagAttr(pageHtml, "video-player", "episodes_count")) || 0;
+    if (!embedUrl && parsedEpisodes.length <= 1 && totalEpisodes <= 1) {
       var tagEmbed = extractTagAttr(pageHtml, "video-player", "embed_url");
       if (tagEmbed && /^https?:\/\//i.test(tagEmbed)) {
         embedUrl = tagEmbed;
@@ -391,12 +493,29 @@ function resolveEpisodeEmbedUrl(animePath, requestedEpisode) {
 
 // ---------------------------------------------------------------- VixCloud Stream Resolver
 
-function resolveVixCloudMaster(embedUrl) {
+// Same player served from mirrored hosts; if one is blocked (403/CF) the other usually works.
+var VIX_HOSTS = ["vixcloud.co", "vixsrc.to"];
+
+function withVixHost(url, host) {
+  return String(url || "").replace(/^(https?:\/\/)(?:www\.)?(?:vixcloud\.co|vixsrc\.to)(?=[\/?#:]|$)/i, "$1" + host);
+}
+
+// ".m3u8" belongs to the path, before any existing query (e.g. "/playlist/123?b=1").
+function buildVixMasterUrl(playlistUrl, params) {
+  var qIdx = playlistUrl.indexOf("?");
+  var path = qIdx >= 0 ? playlistUrl.slice(0, qIdx) : playlistUrl;
+  var query = qIdx >= 0 ? playlistUrl.slice(qIdx + 1) : "";
+  if (!/\.m3u8$/i.test(path)) path += ".m3u8";
+  var parts = query ? [query] : [];
+  for (var i = 0; i < params.length; i++) {
+    if (params[i][1]) parts.push(params[i][0] + "=" + encodeURIComponent(params[i][1]));
+  }
+  return path + (parts.length ? "?" + parts.join("&") : "");
+}
+
+function resolveVixCloudMaster(embedUrl, playHeaders) {
   return __async(function* () {
-    var embedHtml = yield getText(embedUrl, {
-      "User-Agent": DEFAULT_UA,
-      "Referer": "https://vixcloud.co/"
-    }, REQUEST_TIMEOUT_MS);
+    var embedHtml = yield getText(embedUrl, playHeaders, REQUEST_TIMEOUT_MS);
 
     var token = (embedHtml.match(/['"]token['"]\s*:\s*['"]([^'"]+)['"]/) || [])[1];
     var expires = (embedHtml.match(/['"]expires['"]\s*:\s*['"]([^'"]+)['"]/) || [])[1];
@@ -405,7 +524,8 @@ function resolveVixCloudMaster(embedUrl) {
 
     if (!playlistUrl) {
       var vId = (embedUrl.match(/\/embed\/(\d+)/) || [])[1];
-      if (vId) playlistUrl = "https://vixcloud.co/playlist/" + vId;
+      var origin = (embedUrl.match(/^https?:\/\/[^\/?#]+/i) || [])[0];
+      if (vId && origin) playlistUrl = origin + "/playlist/" + vId;
     }
 
     if (!token || !expires || !playlistUrl) {
@@ -413,12 +533,40 @@ function resolveVixCloudMaster(embedUrl) {
     }
 
     var fhd = /canPlayFHD\s*=\s*true/i.test(embedHtml) || /[?&]canPlayFHD=1/.test(embedUrl);
-    var sep = playlistUrl.indexOf("?") >= 0 ? "&" : "?";
-    var asnParam = asn ? "&asn=" + encodeURIComponent(asn) : "";
-    var fhdParam = fhd ? "&h=1" : "";
-
-    var masterUrl = playlistUrl + ".m3u8" + sep + "token=" + encodeURIComponent(token) + "&expires=" + encodeURIComponent(expires) + asnParam + fhdParam;
+    var masterUrl = buildVixMasterUrl(decodeHtmlEntities(playlistUrl), [
+      ["token", token],
+      ["expires", expires],
+      ["asn", asn],
+      ["h", fhd ? "1" : ""]
+    ]);
     return { masterUrl: masterUrl, fhd: fhd };
+  });
+}
+
+function resolveVixCloudStream(embedUrl) {
+  return __async(function* () {
+    var tried = [];
+    var lastErr = null;
+    for (var h = 0; h < VIX_HOSTS.length; h++) {
+      var host = VIX_HOSTS[h];
+      var hostEmbed = withVixHost(embedUrl, host);
+      if (tried.indexOf(hostEmbed) >= 0) continue;
+      tried.push(hostEmbed);
+
+      var playHeaders = {
+        "User-Agent": DEFAULT_UA,
+        "Referer": "https://" + host + "/"
+      };
+      try {
+        var vixData = yield resolveVixCloudMaster(hostEmbed, playHeaders);
+        var variants = yield parseMasterPlaylist(vixData.masterUrl, playHeaders);
+        return { masterUrl: vixData.masterUrl, fhd: vixData.fhd, variants: variants, headers: playHeaders };
+      } catch (e) {
+        lastErr = e;
+        console.warn("[AnimeUnity] VixCloud via " + host + " failed: " + e.message);
+      }
+    }
+    throw lastErr || new Error("VixCloud unavailable");
   });
 }
 
@@ -524,13 +672,9 @@ function getStreams(rawId, mediaType, reqSeason, reqEpisode) {
         var embedUrl = yield resolveEpisodeEmbedUrl(animePath, Number(targetEp));
         if (!embedUrl) continue;
 
-        var playHeaders = {
-          "User-Agent": DEFAULT_UA,
-          "Referer": "https://vixcloud.co/"
-        };
-
-        var vixData = yield resolveVixCloudMaster(embedUrl);
-        var variants = yield parseMasterPlaylist(vixData.masterUrl, playHeaders);
+        var vixData = yield resolveVixCloudStream(embedUrl);
+        var playHeaders = vixData.headers;
+        var variants = vixData.variants;
 
         // Sort: 1080p > 720p > 480p
         variants.sort(function (a, b) {
