@@ -3,7 +3,7 @@
 // Complete standalone implementation with zero external framework/proxy dependencies.
 
 var DEFAULT_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
-var AU_BASE = "https://www.animeunity.so";
+var AU_BASE = "https://www.animeunity.to";
 var TMDB_KEY = (typeof TMDB_API_KEY !== "undefined" && TMDB_API_KEY) ? TMDB_API_KEY : "68e094699525b18a70bab2f86b1fa706";
 var TMDB_BASE = "https://api.themoviedb.org/3";
 var REQUEST_TIMEOUT_MS = 10000;
