@@ -689,7 +689,8 @@ function uprotKey(link) {
   return m ? m[1] : null;
 }
 
-// Each worker has its own store: entries are written to both, read from the first one that has them.
+// Each worker has its own store (1000 free writes/day): entries go to the first worker that accepts them,
+// reads try every worker in the same order.
 function cachedPlayer(key) {
   if (!key) return Promise.resolve(null);
   function read(i) {
@@ -707,15 +708,18 @@ function storePlayer(key, player) {
   var m = String(player || '').match(/^https?:\/\/(?:www\.)?maxstream\.video\/([A-Za-z0-9]+)\/([A-Za-z0-9]+)\/?$/i);
   if (!key || !m) return Promise.resolve();
   var body = JSON.stringify({ k: key, player: 'https://maxstream.video/' + m[1] + '/' + m[2] });
-  return UC_URLS.reduce(function (chain, url) {
-    return chain.then(function () {
-      return _safeFetch(unmask(url) + '/player', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-worker-auth': unmask(UC_KEY) },
-        body: body
-      }).catch(function () {});
-    });
-  }, Promise.resolve());
+  function write(i) {
+    if (i >= UC_URLS.length) return Promise.resolve();
+    return _safeFetch(unmask(UC_URLS[i]) + '/player', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-worker-auth': unmask(UC_KEY) },
+      body: body
+    })
+      .then(function (r) { return r.ok; })
+      .catch(function () { return false; })
+      .then(function (ok) { return ok ? undefined : write(i + 1); });
+  }
+  return write(0);
 }
 
 function processUprotUrl(link, quality) {
