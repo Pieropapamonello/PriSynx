@@ -3,9 +3,13 @@ var TMDB_API_KEY = '68e094699525b18a70bab2f86b1fa706';
 
 // MaxStream links sit behind the Uprot image captcha, solved by a vision worker.
 // One worker call per title: Uprot's cookie only unlocks the link already solved.
-// Endpoint and key are masked (reversed, XOR, hex): obfuscation against code searches, not a secret.
+// Endpoints and key are masked (reversed, XOR, hex): obfuscation against code searches, not a secret.
+// Two copies of the worker on separate Cloudflare accounts, each with its own daily Workers AI quota.
 var UC_MASK = 'q7Lx2Vd';
-var UC_URL = '075228564124011a45230f1c6455405022115f3b0d034361491f2505185b2d565d3f12045961195a351001562f0847794b4b443c0c463e';
+var UC_URLS = [
+  '075228564124011a45230f1c6455405022115f3b0d034361491f2505185b2d565d3f12045961195a351001562f0847794b4b443c0c463e',
+  '075228564124011a45230f1c62560956211b1c390d07422255533e0705472d1b42234b5e0d3f0846220c'
+];
 var UC_KEY = '0959350b5b2414';
 var UP_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36';
 var MAX_MAXSTREAM = 2;
@@ -495,24 +499,34 @@ function unmask(hex) {
   return out.split('').reverse().join('');
 }
 
+// A random worker goes first so both quotas drain evenly; the other one takes over when it fails
+// (quota exhausted, unreadable answer, network error).
 // The worker answers with grid positions; Uprot wants the cells' data-idx values.
 function solveUpCaptcha(cap) {
-  return _safeFetch(unmask(UC_URL), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-worker-auth': unmask(UC_KEY) },
-    body: JSON.stringify({ target: cap.target, images: cap.cells.map(function (c) { return c.src; }) })
-  })
-    .then(function (r) { return r.ok ? r.json() : null; })
-    .then(function (data) {
-      if (!data || !Array.isArray(data.indices)) return null;
-      var picked = [];
-      data.indices.forEach(function (i) {
-        var c = cap.cells[i];
-        if (c && picked.indexOf(c.idx) < 0) picked.push(c.idx);
+  var urls = UC_URLS.map(unmask);
+  if (Math.random() < 0.5) urls.reverse();
+  var body = JSON.stringify({ target: cap.target, images: cap.cells.map(function (c) { return c.src; }) });
+  function ask(i) {
+    if (i >= urls.length) return Promise.resolve(null);
+    return _safeFetch(urls[i], {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-worker-auth': unmask(UC_KEY) },
+      body: body
+    })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .catch(function () { return null; })
+      .then(function (data) {
+        if (!data || !Array.isArray(data.indices)) return ask(i + 1);
+        var picked = [];
+        data.indices.forEach(function (n) {
+          var c = cap.cells[n];
+          if (c && picked.indexOf(c.idx) < 0) picked.push(c.idx);
+        });
+        picked.sort(function (a, b) { return a - b; });
+        return picked.length ? picked.join(',') : null;
       });
-      picked.sort(function (a, b) { return a - b; });
-      return picked.length ? picked.join(',') : null;
-    });
+  }
+  return ask(0);
 }
 
 // Sends the jar's cookies and stores the ones the response sets (runtimes join several Set-Cookie with ",").
@@ -675,22 +689,33 @@ function uprotKey(link) {
   return m ? m[1] : null;
 }
 
+// Each worker has its own store: entries are written to both, read from the first one that has them.
 function cachedPlayer(key) {
   if (!key) return Promise.resolve(null);
-  return _safeFetch(unmask(UC_URL) + '/player?k=' + encodeURIComponent(key), { headers: { 'x-worker-auth': unmask(UC_KEY) } })
-    .then(function (r) { return r.ok ? r.json() : null; })
-    .then(function (d) { return d && /^https:\/\/maxstream\.video\/[A-Za-z0-9]+\/[A-Za-z0-9]+$/.test(d.player || '') ? d.player : null; })
-    .catch(function () { return null; });
+  function read(i) {
+    if (i >= UC_URLS.length) return Promise.resolve(null);
+    return _safeFetch(unmask(UC_URLS[i]) + '/player?k=' + encodeURIComponent(key), { headers: { 'x-worker-auth': unmask(UC_KEY) } })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) { return d && /^https:\/\/maxstream\.video\/[A-Za-z0-9]+\/[A-Za-z0-9]+$/.test(d.player || '') ? d.player : null; })
+      .catch(function () { return null; })
+      .then(function (player) { return player || read(i + 1); });
+  }
+  return read(0);
 }
 
 function storePlayer(key, player) {
   var m = String(player || '').match(/^https?:\/\/(?:www\.)?maxstream\.video\/([A-Za-z0-9]+)\/([A-Za-z0-9]+)\/?$/i);
   if (!key || !m) return Promise.resolve();
-  return _safeFetch(unmask(UC_URL) + '/player', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-worker-auth': unmask(UC_KEY) },
-    body: JSON.stringify({ k: key, player: 'https://maxstream.video/' + m[1] + '/' + m[2] })
-  }).catch(function () {});
+  var body = JSON.stringify({ k: key, player: 'https://maxstream.video/' + m[1] + '/' + m[2] });
+  return UC_URLS.reduce(function (chain, url) {
+    return chain.then(function () {
+      return _safeFetch(unmask(url) + '/player', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-worker-auth': unmask(UC_KEY) },
+        body: body
+      }).catch(function () {});
+    });
+  }, Promise.resolve());
 }
 
 function processUprotUrl(link, quality) {
