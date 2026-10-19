@@ -1,6 +1,6 @@
 {
   "name": "PriSynx",
-  "version": "1.5.3",
+  "version": "1.5.4",
   "description": "Suite di streaming per Nuvio con sorgenti italiane/internazionali, sync audio e multi-qualità",
   "author": "PriSynx",
   "scrapers": [
