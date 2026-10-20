@@ -315,7 +315,7 @@
       "id": "prisynx-realtime",
       "name": "🍰 Real Time",
       "description": "Real Time, NOVE, DMAX e Food Network (Discovery Italia) HLS 1080p in italiano, puntate online ufficiali",
-      "version": "1.2.0",
+      "version": "1.2.1",
       "author": "PriSynx",
       "resources": [
         "stream"

@@ -136,11 +136,21 @@ function getInfo(id) {
   });
 }
 
+// TMDB adds subtitles the channel drops ("Bake Off Italia - Dolci in forno" -> "Bake Off Italia")
+function titles(info) {
+  var out = [info.title, info.orig];
+  [info.title, info.orig].forEach(function (t) {
+    var base = String(t || '').split(/\s+[-\u2013\u2014]\s+|:\s+/)[0];
+    if (base && base !== t) out.push(base);
+  });
+  return out;
+}
+
 function titleScore(candidate, info) {
   var t = norm(candidate);
   if (!t) return 0;
   var best = 0;
-  [norm(info.title), norm(info.orig)].forEach(function (x) {
+  titles(info).map(norm).forEach(function (x) {
     if (!x) return;
     if (t === x) best = Math.max(best, 3);
     else if (t.indexOf(x) !== -1 || x.indexOf(t) !== -1) {
@@ -162,7 +172,7 @@ function searchChannel(ch, query) {
 // cerca su tutti i canali in parallelo e tiene il programma piu' simile (a parita', l'ordine di CHANNELS)
 function findShow(info) {
   return run(function* () {
-    var queries = [info.title, info.orig].map(norm).filter(function (q, i, a) { return q && a.indexOf(q) === i; });
+    var queries = titles(info).map(norm).filter(function (q, i, a) { return q && a.indexOf(q) === i; });
     for (var qi = 0; qi < queries.length; qi++) {
       var results = yield Promise.all(CHANNELS.map(function (ch) { return searchChannel(ch, queries[qi]); }));
       var best = null, bestScore = 0;
