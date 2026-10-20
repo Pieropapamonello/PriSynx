@@ -1,6 +1,6 @@
 {
   "name": "PriSynx",
-  "version": "1.5.5",
+  "version": "1.5.6",
   "description": "Suite di streaming per Nuvio con sorgenti italiane/internazionali, sync audio e multi-qualità",
   "author": "PriSynx",
   "scrapers": [
@@ -53,8 +53,8 @@
     {
       "id": "prisynx-eurostreaming",
       "name": "🍿 Eurostreaming",
-      "description": "Serie TV da Eurostreaming (MixDrop, Turbovid, DeltaBit)",
-      "version": "1.1.0",
+      "description": "Serie TV da Eurostreaming (MaxStream, MixDrop, Turbovid, DeltaBit)",
+      "version": "1.2.0",
       "author": "PriSynx",
       "resources": ["stream"],
       "idPrefixes": ["tmdb:", "tt"],
