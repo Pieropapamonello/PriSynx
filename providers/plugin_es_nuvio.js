@@ -1233,8 +1233,7 @@ function _followRedirector(url, referer, jar) {
 // =========================================================================
 function resolveClickacc(startUrl, kind, jar) {
   var current = startUrl;
-  var ES_DOMAIN = 'https://eurostreamings.live';
-  var referer = ES_DOMAIN + '/';
+  var referer = _esDomainOrFallback() + '/';
   var activeJar = jar || {};
   // Nuvio Mobile <= 0.5.3 (quickjs-kt 1.0.5) cancels every pending fetch as soon as a promise is
   // rejected with no handler yet, e.g. Promise.reject(): so failures are thrown inside callbacks.
@@ -1398,7 +1397,7 @@ function _runNuvioTest(resolve) {
   // Nuvio Plugin Tester hardcodes TMDB ID 603 when testing scrapers.
   // Test with confirmed active Eurostreaming series (The Penguin S01E01 / Slow Horses S01E05)
   getEsDomain(function (domain) {
-    if (!domain) domain = 'https://eurostreamings.live';
+    if (!domain) domain = ES_FALLBACK_DOMAIN;
     var testPage = domain + '/the-penguin-3/';
     extractLinksFromPage(domain, testPage, 1, 1, 'The Penguin', function (streams) {
       if (streams && streams.length > 0) {
@@ -1570,7 +1569,7 @@ function getStreams(id, type, season, episode, providerContext) {
 }
 
 function esFetch(url, cb) {
-  var ref = _getUrlOrigin(url) ? (_getUrlOrigin(url) + "/") : "https://eurostreamings.live/";
+  var ref = _getUrlOrigin(url) ? (_getUrlOrigin(url) + "/") : (_esDomainOrFallback() + "/");
   var headers = {
     'User-Agent': ES_UA,
     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -1583,53 +1582,47 @@ function esFetch(url, cb) {
     .catch(function (err) { cb(err, null); });
 }
 
+var ES_DOMAINS_URL = "https://raw.githubusercontent.com/qwertyuiop8899/streamvix/main/config/domains.json";
+var ES_FALLBACK_DOMAIN = "https://eurostreamings.live";
 var _cachedEsDomain = null;
 
+function _normalizeEsDomain(value) {
+  if (!value) return null;
+  var v = typeof value === "string" ? value : value.domain;
+  if (!v || typeof v !== "string") return null;
+  v = v.trim().replace(/^https?:\/\//i, "").replace(/\/+$/, "");
+  return /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(v) ? "https://" + v : null;
+}
+
+function _esDomainOrFallback() {
+  return _cachedEsDomain || ES_FALLBACK_DOMAIN;
+}
+
+// Domain comes from streamvix domains.json ("eurostreaming"); the fallback is never cached so the next call retries.
 function getEsDomain(cb) {
   if (_cachedEsDomain) return cb(_cachedEsDomain);
-  // Try cabod domain list, fallback to hardcoded
-  _customFetch("https://raw.githubusercontent.com/qwertyuiop8899/streamvix/main/config/domains.json", {}, 10000)
+  _customFetch(ES_DOMAINS_URL, {}, 10000)
     .then(function (r) { return r.text(); })
     .then(function (data) {
+      var domain = null;
       try {
         var json = JSON.parse(data);
-        var d = json && json.eurostreaming;
-        if (d) {
-          var domainStr = typeof d === 'string' ? d : d.domain;
-          if (domainStr) {
-            _cachedEsDomain = 'https://' + domainStr;
-            return cb(_cachedEsDomain);
-          }
-        }
-        var ee = json && json['easter-egg'];
-        if (ee && ee.eurostreaming) {
-          var domainStr2 = typeof ee.eurostreaming === 'string' ? ee.eurostreaming : ee.eurostreaming.domain;
-          if (domainStr2) {
-            _cachedEsDomain = 'https://' + domainStr2;
-            return cb(_cachedEsDomain);
-          }
-        }
+        domain = _normalizeEsDomain(json && json.eurostreaming) ||
+          _normalizeEsDomain(json && json["easter-egg"] && json["easter-egg"].eurostreaming);
       } catch (e) {
-        // Maybe it's a text file, try alternative format
-        var lines = data.split('\n');
-        for (var i = 0; i < lines.length; i++) {
-          if (lines[i].indexOf('eurostreaming') >= 0) {
-            var parts = lines[i].split('=');
-            if (parts.length > 1 && parts[1].trim()) {
-              var dom = parts[1].trim();
-              if (!dom.startsWith('http')) dom = 'https://' + dom;
-              _cachedEsDomain = dom;
-              return cb(_cachedEsDomain);
-            }
+        var lines = String(data || "").split("\n");
+        for (var i = 0; i < lines.length && !domain; i++) {
+          if (lines[i].indexOf("eurostreaming") >= 0) {
+            var parts = lines[i].split("=");
+            if (parts.length > 1) domain = _normalizeEsDomain(parts[1]);
           }
         }
       }
-      _cachedEsDomain = 'https://eurostreamings.live';
-      cb(_cachedEsDomain);
+      if (domain) _cachedEsDomain = domain;
+      cb(domain || ES_FALLBACK_DOMAIN);
     })
     .catch(function () {
-      _cachedEsDomain = 'https://eurostreamings.live';
-      cb(_cachedEsDomain);
+      cb(ES_FALLBACK_DOMAIN);
     });
 }
 

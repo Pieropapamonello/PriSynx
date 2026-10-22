@@ -96,7 +96,7 @@
       "id": "prisynx-eurostreaming",
       "name": "🍿 Eurostreaming",
       "description": "Serie TV da Eurostreaming (MaxStream, MixDrop, Turbovid, DeltaBit)",
-      "version": "1.2.0",
+      "version": "1.2.1",
       "author": "PriSynx",
       "resources": [
         "stream"
