@@ -829,6 +829,28 @@ function getStreams(tmdbId, mediaType, season, episode) {
     }
 
     var heading = "\uD83D\uDCC1 " + meta.title + (isTv ? " S" + pad2(season) + "E" + pad2(episode) : "") + (meta.year ? " (" + meta.year + ")" : "");
+    var allSubtitles = [];
+    if (ita && Array.isArray(ita.subtitles)) {
+      ita.subtitles.forEach(function (s) {
+        allSubtitles.push({
+          url: s.uri,
+          name: s.name || (s.forced ? "Italiano (Forced)" : "Italiano"),
+          language: s.lang || "ita"
+        });
+      });
+    }
+    if (Array.isArray(movy.subtitles)) {
+      movy.subtitles.forEach(function (s) {
+        if (!allSubtitles.some(function (x) { return x.url === s.url; })) {
+          allSubtitles.push({
+            url: s.url,
+            name: s.name || s.label || "Sub",
+            language: s.language || s.lang || "en"
+          });
+        }
+      });
+    }
+
     var streams = movy.sources.map(function (src) {
       var q = QUALITY_INFO[src.qkey];
       var sync = src.measured ? measuredSync : unmeasuredSync, badge = syncBadge(sync);
@@ -847,7 +869,7 @@ function getStreams(tmdbId, mediaType, season, episode) {
         type: "hls",
         provider: "movyita",
         headers: movy.headers,
-        subtitles: movy.subtitles,
+        subtitles: allSubtitles.length ? allSubtitles : undefined,
         audioSync: ita ? sync.info : undefined,
         // NuvioTV adds it to the device audio delay (>0 = audio later); other apps ignore it.
         // audioDelayLanguage: the delay only applies to the ITA tracks (audio + subtitles from vixsrc), not to the original audio.

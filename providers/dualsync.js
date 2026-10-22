@@ -306,16 +306,27 @@ function qualityForWidth(width) {
 }
 
 function parseMaster(text, baseUrl) {
-  var lines = text.split(/\r?\n/), variants = [], audios = [];
+  var lines = text.split(/\r?\n/), variants = [], audios = [], subtitles = [];
   for (var i = 0; i < lines.length; i++) {
     var line = lines[i];
-    if (line.indexOf("#EXT-X-MEDIA:") === 0 && attr(line, "TYPE") === "AUDIO" && attr(line, "URI")) {
-      audios.push({
-        group: attr(line, "GROUP-ID"),
-        lang: String(attr(line, "LANGUAGE") || "").toLowerCase(),
-        isDefault: attr(line, "DEFAULT") === "YES",
-        uri: absUrl(attr(line, "URI"), baseUrl)
-      });
+    if (line.indexOf("#EXT-X-MEDIA:") === 0) {
+      var type = attr(line, "TYPE");
+      if (type === "AUDIO" && attr(line, "URI")) {
+        audios.push({
+          group: attr(line, "GROUP-ID"),
+          lang: String(attr(line, "LANGUAGE") || "").toLowerCase(),
+          isDefault: attr(line, "DEFAULT") === "YES",
+          uri: absUrl(attr(line, "URI"), baseUrl)
+        });
+      } else if (type === "SUBTITLES" && attr(line, "URI")) {
+        subtitles.push({
+          group: attr(line, "GROUP-ID"),
+          name: String(attr(line, "NAME") || "Sub"),
+          lang: String(attr(line, "LANGUAGE") || "en").toLowerCase(),
+          uri: absUrl(attr(line, "URI"), baseUrl),
+          forced: attr(line, "FORCED") === "YES"
+        });
+      }
     } else if (line.indexOf("#EXT-X-STREAM-INF:") === 0) {
       var uri = String(lines[i + 1] || "").trim();
       if (!uri || uri.charAt(0) === "#") continue;
@@ -327,7 +338,7 @@ function parseMaster(text, baseUrl) {
       });
     }
   }
-  return { variants: variants, audios: audios };
+  return { variants: variants, audios: audios, subtitles: subtitles };
 }
 
 // Picks the 4K/FHD renditions of a source master and measures its length on the top one.
@@ -349,7 +360,7 @@ function resolveEncode(src) {
     // Video-only renditions leave the original language in a separate track of the source master.
     var group = master.audios.filter(function (a) { return a.group === top.audioGroup; });
     var original = group.filter(function (a) { return a.isDefault; })[0] || group.filter(function (a) { return /^en/.test(a.lang); })[0] || group[0] || null;
-    return { site: src.site, server: src.server, headers: src.headers, length: length, renditions: renditions, original: original };
+    return { site: src.site, server: src.server, headers: src.headers, length: length, renditions: renditions, original: original, subtitles: master.subtitles || [] };
   }());
 }
 
@@ -569,7 +580,7 @@ function quoteSafe(v) {
   return String(v).replace(/["\r\n]/g, "").replace(/[^\x20-\x7e]/g, "");
 }
 
-function buildMasterDataUri(videoUrl, qinfo, ita, original) {
+function buildMasterDataUri(videoUrl, qinfo, ita, original, videoSubs) {
   // First line ends with a bare CR so mpv's generic m3u parser doesn't grab it; FFmpeg/ExoPlayer accept CR line breaks.
   var lines = ["#EXTM3U\r#EXT-X-VERSION:6", "#EXT-X-INDEPENDENT-SEGMENTS"];
   lines.push('#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="Italiano",LANGUAGE="it",DEFAULT=YES,AUTOSELECT=YES,URI="' + quoteSafe(ita.audio.uri) + '"');
@@ -577,12 +588,23 @@ function buildMasterDataUri(videoUrl, qinfo, ita, original) {
     lines.push('#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="Originale",LANGUAGE="' + quoteSafe(original.lang || "en") +
       '",DEFAULT=NO,AUTOSELECT=NO,URI="' + quoteSafe(original.uri) + '"');
   }
-  ita.subtitles.forEach(function (s) {
-    lines.push('#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="subs",NAME="' + quoteSafe(s.name) + '",LANGUAGE="it"' +
-      ',DEFAULT=NO,AUTOSELECT=' + (s.forced ? "YES" : "NO") + ',FORCED=' + (s.forced ? "YES" : "NO") + ',URI="' + quoteSafe(s.uri) + '"');
-  });
+  var hasSubs = false;
+  if (ita && Array.isArray(ita.subtitles)) {
+    ita.subtitles.forEach(function (s) {
+      hasSubs = true;
+      lines.push('#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="subs",NAME="' + quoteSafe(s.name) + '",LANGUAGE="it"' +
+        ',DEFAULT=NO,AUTOSELECT=' + (s.forced ? "YES" : "NO") + ',FORCED=' + (s.forced ? "YES" : "NO") + ',URI="' + quoteSafe(s.uri) + '"');
+    });
+  }
+  if (videoSubs && Array.isArray(videoSubs)) {
+    videoSubs.forEach(function (s) {
+      hasSubs = true;
+      lines.push('#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="subs",NAME="' + quoteSafe(s.name) + '",LANGUAGE="' + quoteSafe(s.lang || "en") + '"' +
+        ',DEFAULT=NO,AUTOSELECT=NO,FORCED=' + (s.forced ? "YES" : "NO") + ',URI="' + quoteSafe(s.uri) + '"');
+    });
+  }
   lines.push("#EXT-X-STREAM-INF:BANDWIDTH=" + qinfo.bandwidth + ",RESOLUTION=" + qinfo.resolution + ',AUDIO="aud"' +
-    (ita.subtitles.length ? ',SUBTITLES="subs"' : ""));
+    (hasSubs ? ',SUBTITLES="subs"' : ""));
   lines.push(quoteSafe(videoUrl));
   var text = lines.join("\n") + "\n";
   // Base64 must end with '=' so FFmpeg's decoder stops before the "#.m3u8" hint used for HLS probing.
@@ -985,6 +1007,28 @@ function getStreams(tmdbId, mediaType, season, episode) {
     var streams = [];
     encodes.forEach(function (enc) {
       var sync = syncFor(enc, measured, itaLength, autoJobs), badge = syncBadge(sync);
+      var allSubtitles = [];
+      if (ita && Array.isArray(ita.subtitles)) {
+        ita.subtitles.forEach(function (s) {
+          allSubtitles.push({
+            url: s.uri,
+            name: s.name || (s.forced ? "Italiano (Forced)" : "Italiano"),
+            language: s.lang || "ita"
+          });
+        });
+      }
+      if (enc && Array.isArray(enc.subtitles)) {
+        enc.subtitles.forEach(function (s) {
+          if (!allSubtitles.some(function (x) { return x.url === s.uri; })) {
+            allSubtitles.push({
+              url: s.uri,
+              name: s.name || "Originale",
+              language: s.lang || "en"
+            });
+          }
+        });
+      }
+
       enc.qualities.forEach(function (qkey) {
         var rendition = enc.renditions[qkey];
         if (!rendition) return;
@@ -993,18 +1037,19 @@ function getStreams(tmdbId, mediaType, season, episode) {
           ? badge.line + (sync.info ? "\n" + syncInfoLine(sync.info) : "") + "\n" + lengthLine(enc, sync) +
             "\n\uD83C\uDDEE\uD83C\uDDF9 Audio ITA (SC) + \uD83C\uDF0D originale"
           : "\uD83C\uDF0D Solo audio originale (ITA non trovato)") +
-          "\n\uD83C\uDFAC " + enc.site + " \u00B7 " + enc.server + (ita && ita.subtitles.length ? " \u00B7 Sub ITA" : "");
+          "\n\uD83C\uDFAC " + enc.site + " \u00B7 " + enc.server + (allSubtitles.length ? " \u00B7 Sub ITA" : "");
         streams.push({
           name: sortPrefix(qkey, ita ? sync.level : "unknown") + "⚡ DualSync " + q.label + (ita ? " \uD83C\uDDEE\uD83C\uDDF9 " + badge.short : ""),
           title: heading + "\n" + details,
           // Text under the name: NuvioTV shows `size + language` (instead of `title`), Nuvio Mobile shows
           // `quality + size + language` and ignores `title`. So the details go in `size` for both apps.
           size: details,
-          url: ita ? buildMasterDataUri(rendition.url, q, ita, enc.original) : rendition.url,
+          url: ita ? buildMasterDataUri(rendition.url, q, ita, enc.original, enc.subtitles) : rendition.url,
           quality: q.label,
           type: "hls",
           provider: "dualsync",
           headers: enc.headers,
+          subtitles: allSubtitles.length ? allSubtitles : undefined,
           audioSync: ita ? sync.info : undefined,
           // NuvioTV adds it to the device audio delay (>0 = audio later); other apps ignore it.
           // audioDelayLanguage: the delay only applies to the ITA tracks (audio + subtitles from vixsrc), not to the original audio.
