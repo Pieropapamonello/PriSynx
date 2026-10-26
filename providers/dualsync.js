@@ -714,6 +714,7 @@ function syncFor(enc, measured, itaLength, autoJobs) {
   }
   var hit = null;
   (measured || []).forEach(function (m) {
+    if (m.provider && (m.provider || "").toLowerCase() !== siteKey) return;
     var d = Math.abs(Number(m.video_duration) - enc.length);
     if (d <= DB_LENGTH_TOLERANCE_S && (!hit || d < hit.d)) hit = { m: m, d: d };
   });

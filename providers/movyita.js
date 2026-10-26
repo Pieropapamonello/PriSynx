@@ -131,18 +131,20 @@ function getAutoSyncJobs(mediaKey) {
   var url = AUTOSYNC_API_URL.replace(/\/jobs\/?$/, "/jobs/status") + "?media_key=" + encodeURIComponent(mediaKey);
   return getJson(url, { "Accept": "application/json" }, 2500).then(function (d) {
     if (!d || !d.items || !d.items.length) return { status: null, done: null, stage: null, queueAhead: null };
-    var done = d.items.filter(function (it) { return it.status === "done" && it.result && it.result.status === "ok"; })[0] || null;
-    var runningJob = d.items.filter(function (it) { return it.status === "running"; })[0] || null;
-    var queuedJob = d.items.filter(function (it) { return it.status === "queued"; })[0] || null;
-    var incompatible = d.items.some(function (it) { return it.status === "incompatible"; });
-    var failedJob = d.items.filter(function (it) { return it.status === "failed"; })[0] || null;
+    var movyItems = d.items.filter(function (it) { return (it.provider || "").toLowerCase() === "movy"; });
+    if (!movyItems.length) return { status: null, done: null, stage: null, queueAhead: null };
+    var done = movyItems.filter(function (it) { return it.status === "done" && it.result && it.result.status === "ok"; })[0] || null;
+    var runningJob = movyItems.filter(function (it) { return it.status === "running"; })[0] || null;
+    var queuedJob = movyItems.filter(function (it) { return it.status === "queued"; })[0] || null;
+    var incompatible = movyItems.some(function (it) { return it.status === "incompatible"; });
+    var failedJob = movyItems.filter(function (it) { return it.status === "failed"; })[0] || null;
 
     var status = runningJob ? "running" : (queuedJob ? "queued" : (incompatible ? "incompatible" : (failedJob ? "failed" : null)));
     var stage = runningJob ? (runningJob.stage || "tier1") : null;
     var queueAhead = null;
     if (queuedJob) {
       queueAhead = typeof queuedJob.queue_ahead === "number" ? queuedJob.queue_ahead : 0;
-      d.items.forEach(function (it) {
+      movyItems.forEach(function (it) {
         if (it.status === "queued" && typeof it.queue_ahead === "number" && it.queue_ahead < queueAhead) {
           queueAhead = it.queue_ahead;
         }
@@ -150,7 +152,7 @@ function getAutoSyncJobs(mediaKey) {
     }
 
     var providerErrors = {};
-    d.items.forEach(function (it) {
+    movyItems.forEach(function (it) {
       if (it.status === "failed") {
         var rawErr = String(it.error || it.last_error || "errore analisi");
         var msg = rawErr;
